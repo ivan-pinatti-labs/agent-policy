@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Ansible: reading inventories, configuration and docs, and linting. Running
+# a playbook or an ad hoc command against hosts falls through to the agent's
+# own default (auto mode, a prompt, or Codex's approval). Installing content
+# from Galaxy asks.
+
+[[rule]]
+severity = "read"
+reason = "Read Ansible inventories, configuration and docs"
+prefix = [
+  ["ansible", ["--version", "--list-hosts"]],
+  ["ansible-inventory", ["--list", "--graph", "--host"]],
+  ["ansible-config", ["list", "view", "dump"]],
+  ["ansible-galaxy", "list"],
+  ["ansible-galaxy", ["collection", "role"], "list"],
+  ["ansible-doc"],
+  ["ansible-lint"],
+]
+
+[[rule]]
+severity = "moderate"
+reason = "Installs content from Ansible Galaxy"
+prefix = [
+  ["ansible-galaxy", "install"],
+  ["ansible-galaxy", ["collection", "role"], "install"],
+]

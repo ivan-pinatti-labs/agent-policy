@@ -1,0 +1,27 @@
+---
+cff-version: 1.2.0
+message: >
+  If you use this software, or build on its policy, consider citing it using
+  the metadata below.
+title: agent-policy
+abstract: >
+  One command policy for coding agents (Claude Code and Codex): allow, ask
+  and hand-off tiers written once, rendered to each agent's native rules,
+  plus a shared guard hook and a scratchpad helper for throwaway containers.
+authors:
+  - given-names: Ivan
+    family-names: Pinatti
+    alias: ivan-pinatti
+    website: https://github.com/ivan-pinatti
+license: Apache-2.0
+repository-code: https://github.com/ivan-pinatti-labs/agent-policy
+url: https://github.com/ivan-pinatti-labs/agent-policy
+keywords:
+  - claude-code
+  - codex
+  - coding-agents
+  - permissions
+  - pre-tool-use-hook
+  - podman
+version: 0.1.0
+date-released: "2026-10-03"

@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# OpenTofu. Planning and reading state is free; applying, importing and
+# state surgery ask; destroying is handed to the user. The globs start with
+# `*` so that `AWS_PROFILE=x tofu apply` matches too.
+
+[[rule]]
+severity = "read"
+reason = "Plan and read OpenTofu state"
+prefix = [
+  ["tofu", ["show", "output", "validate", "version", "providers", "plan",
+            "graph", "console", "init"]],
+  ["tofu", "fmt", ["-check", "--check"]],
+  ["tofu", "state", ["list", "show", "pull"]],
+  ["tofu", "workspace", ["list", "show"]],
+]
+
+[[rule]]
+severity = "high"
+reason = "Changes real infrastructure or its state"
+prefix = [
+  ["tofu", ["apply", "import", "taint", "untaint", "refresh", "force-unlock"]],
+  ["tofu", "state", ["rm", "mv", "push", "replace-provider"]],
+  ["tofu", "workspace", ["new", "select", "delete"]],
+]
+claude = [
+  "Bash(*tofu apply*)",
+  "Bash(*tofu import*)",
+  "Bash(*tofu state rm*)",
+  "Bash(*tofu state mv*)",
+  "Bash(*tofu state push*)",
+  "Bash(*tofu force-unlock*)",
+]
+
+[[rule]]
+severity = "severe"
+reason = "Destroys infrastructure: the user runs it"
+prefix = [
+  ["tofu", "destroy"],
+  ["tofu", "apply", ["-destroy", "--destroy"]],
+]
+claude = ["Bash(*tofu destroy*)", "Bash(*tofu apply*-destroy*)"]

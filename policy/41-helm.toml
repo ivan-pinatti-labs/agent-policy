@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Helm. Reading releases and rendering charts is free; installing, upgrading,
+# removing or rolling back a release asks.
+
+[[rule]]
+severity = "read"
+reason = "Read releases and render charts"
+prefix = [
+  ["helm", ["list", "ls", "get", "status", "history", "search", "show",
+            "version", "template", "lint", "dependency"]],
+]
+
+[[rule]]
+severity = "high"
+reason = "Changes a release or the chart repositories"
+prefix = [
+  ["helm", ["install", "upgrade", "uninstall", "delete", "rollback", "push", "repo"]],
+]
+claude = ["Bash(*helm * upgrade *)", "Bash(*helm * install *)", "Bash(*helm * uninstall *)"]

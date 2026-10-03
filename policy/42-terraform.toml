@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Terraform. Planning and reading state is free; applying, importing and
+# state surgery ask; destroying is handed to the user. The globs start with
+# `*` so that `AWS_PROFILE=x terraform apply` and wrappers such as atmos
+# match too.
+
+[[rule]]
+severity = "read"
+reason = "Plan and read Terraform state"
+prefix = [
+  ["terraform", ["show", "output", "validate", "version", "providers", "plan",
+                  "graph", "console", "init"]],
+  ["terraform", "fmt", ["-check", "--check"]],
+  ["terraform", "state", ["list", "show", "pull"]],
+  ["terraform", "workspace", ["list", "show"]],
+]
+
+[[rule]]
+severity = "high"
+reason = "Changes real infrastructure or its state"
+prefix = [
+  ["terraform", ["apply", "import", "taint", "untaint", "refresh", "force-unlock"]],
+  ["terraform", "state", ["rm", "mv", "push", "replace-provider"]],
+  ["terraform", "workspace", ["new", "select", "delete"]],
+]
+claude = [
+  "Bash(*terraform apply*)",
+  "Bash(*terraform import*)",
+  "Bash(*terraform state rm*)",
+  "Bash(*terraform state mv*)",
+  "Bash(*terraform state push*)",
+  "Bash(*terraform force-unlock*)",
+]
+
+[[rule]]
+severity = "severe"
+reason = "Destroys infrastructure: the user runs it"
+prefix = [
+  ["terraform", "destroy"],
+  ["terraform", "apply", ["-destroy", "--destroy"]],
+]
+claude = ["Bash(*terraform destroy*)", "Bash(*terraform apply*-destroy*)"]

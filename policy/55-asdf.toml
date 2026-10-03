@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# asdf. Reading what is installed and selecting a version (which edits a
+# .tool-versions file) is free. Installing a plugin or a version downloads
+# and runs code from outside the distribution, so it asks.
+
+[[rule]]
+severity = "low"
+reason = "Read installed versions and select one"
+prefix = [
+  ["asdf", ["list", "current", "where", "which", "version", "info", "help"]],
+  ["asdf", "plugin", "list"],
+  ["asdf", ["set", "local", "global", "shell"]],
+]
+
+[[rule]]
+severity = "moderate"
+reason = "Downloads, installs or removes tools"
+prefix = [
+  ["asdf", ["install", "uninstall", "reshim", "update"]],
+  ["asdf", "plugin", ["add", "remove", "update"]],
+]

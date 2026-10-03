@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Docker. The daemon usually runs as root, so a container started through it
+# can reach far more of the host than a rootless podman one: reading and
+# building are free, anything that runs or changes a container asks. The
+# guard's mount and protected deployment checks apply here too.
+
+[[rule]]
+severity = "read"
+reason = "Inspect docker containers, images, networks and volumes"
+prefix = [
+  ["docker", ["ps", "images", "inspect", "logs", "top", "port", "stats",
+              "history", "diff", "info", "version", "search", "events"]],
+  ["docker", "container", ["ls", "list", "inspect", "logs", "top", "stats",
+                            "diff", "port"]],
+  ["docker", "image", ["ls", "list", "inspect", "history"]],
+  ["docker", "network", ["ls", "list", "inspect"]],
+  ["docker", "volume", ["ls", "list", "inspect"]],
+  ["docker", "system", ["df", "info", "events"]],
+  ["docker", "buildx", ["ls", "inspect"]],
+  ["docker", "manifest", "inspect"],
+  ["docker", "context", ["ls", "inspect", "show"]],
+  ["docker", "compose", ["ps", "ls", "logs", "config", "images", "top",
+                          "version", "port"]],
+]
+
+[[rule]]
+severity = "low"
+reason = "Build and pull images"
+prefix = [
+  ["docker", ["build", "pull"]],
+  ["docker", "buildx", "build"],
+  ["docker", "image", ["build", "pull"]],
+]
+
+[[rule]]
+severity = "moderate"
+reason = "Runs, changes or removes something through the docker daemon"
+prefix = [
+  ["docker", ["run", "exec", "create", "start", "stop", "restart", "cp",
+              "rm", "rmi", "kill", "pause", "unpause", "rename", "commit",
+              "save", "load", "import", "export", "push", "login", "logout",
+              "update", "attach", "tag"]],
+  ["docker", "container", ["run", "exec", "create", "start", "stop",
+                            "restart", "rm", "kill", "prune", "commit",
+                            "export", "update", "rename"]],
+  ["docker", "image", ["rm", "prune", "load", "import", "save", "push", "tag"]],
+  ["docker", "network", ["create", "rm", "prune", "connect", "disconnect"]],
+  ["docker", "volume", ["create", "rm", "prune"]],
+  ["docker", "system", "prune"],
+  ["docker", "context", ["use", "create", "rm", "update"]],
+  ["docker", "manifest", ["push", "rm", "create", "annotate"]],
+  ["docker", "compose", ["up", "run", "exec", "stop", "restart", "start",
+                          "down", "rm", "kill", "pause"]],
+  ["docker-compose"],
+]
+# Global flags pick another daemon, context or host.
+claude = ["Bash(docker -*)"]

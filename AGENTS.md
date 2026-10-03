@@ -1,0 +1,170 @@
+# agent-policy agent instructions
+
+Instructions for AI coding agents working in this repository. Claude Code
+reads them through `CLAUDE.md`; Codex and CodeRabbit read this file
+directly.
+
+## Organization conventions
+
+Shared by every `ivan-pinatti-labs` repository and kept identical across
+them, so change it everywhere at once. Where this repository's own sections
+are more specific, follow them.
+
+### Everything here is public
+
+- Nothing sensitive, controversial or borderline goes into a commit, pull
+  request, issue, comment or committed agent file. That includes secrets,
+  tokens, personal paths, email addresses other than a GitHub noreply one,
+  host names, LAN addresses and details of anyone's own deployment.
+- Personal or machine specific material stays in gitignored files:
+  `CLAUDE.local.md` for notes, `.claude/settings.local.json` for settings,
+  `.claude/agents/local/` for agents.
+- Sensitive content found already committed is reported to a maintainer.
+  Never rewrite history or force push to remove it.
+
+### Run binaries in containers, not on the host
+
+A binary that did not come from the operating system's package manager (a
+release download, an installer script, a new version under evaluation, a
+scanner, a debugging tool) runs inside a rootless Podman container, never
+directly on the host. That holds when validating,
+testing, checking a new version and debugging.
+
+It holds one level further in as well. In a
+[devcontainer-airlock](https://github.com/ivan-pinatti-labs/devcontainer-airlock)
+workbench, where the coding agents and their logins live, project code does
+not run in the workbench itself: hooks, tests, package installs and
+unreviewed binaries run through `l2`, in an L2 container that gets the
+working tree and nothing else (no network, no credentials). `l2 --net` adds
+network through the workspace's egress proxy, and `l2 --engine` gives a run
+the L2 engine, for tests that build or start containers of their own.
+
+```bash
+podman run --rm --network=none \
+  -v "<only what it needs>:/work:ro,Z" -w /work \
+  <image> <binary> [args]
+```
+
+- The container gets what the process needs and nothing else. Mount only the
+  specific files and folders required, read only. Add network access or
+  `:rw` only when the task requires it, and say so.
+- Prefer the tool's official image, pinned to a version. For a bare release
+  binary use `debian:13-slim` rather than Alpine: glibc builds fail on musl
+  with a misleading "No such file or directory".
+- On SELinux hosts a bind mount needs a label (`Z`). Do not relabel a large
+  tree that other containers also use; copy what is needed into a scratch
+  directory and mount that.
+- Podman is the default container runtime: rootless, with no daemon.
+- Exceptions: the hook environments pre-commit builds, and the containers
+  this repository's own `Makefile` or hooks start. In a workbench both run in
+  L2 too.
+
+### Parallel work uses worktrees
+
+More than one agent may work in a repository at the same time. Give each task
+its own worktree under `.claude/worktrees/<branch>` (gitignored), and never
+switch branches in a checkout someone else may be using.
+
+### Unattended work runs on a bounded tick
+
+Work left running while nobody is watching is driven by a bounded pass, never
+by a wait for the outcome you want.
+
+A background wait whose only exit is success does not fail, it disappears. A
+pull request sitting in a merge queue is the worked example: a flaky check
+ejects it, which is neither merged nor closed, so a loop waiting for "merged"
+runs forever, nothing notifies, and the session stops. That cost roughly
+sixteen unattended hours here on 2026-09-22, and the giveaway is that silence
+and progress look identical from outside.
+
+So:
+
+- **Cap every pass**, around fifty minutes, and report on exit whether or not
+  anything moved. Time always advances, so no condition can trap it. Say
+  plainly when a pass did nothing, because a quiet pass and a dead session
+  have to look different.
+- **Re-derive state from the API every pass.** Draft status, review verdict,
+  unresolved threads, approval, queue membership. Never carry a belief from
+  the previous pass.
+- **Handle every outcome, not only the good one.** Released from draft,
+  review declined, approval job timed out, ejected from the queue, merged,
+  closed. Only the last two are final; the rest are recoverable, and that is
+  exactly why they have to be handled rather than waited through. A pass that
+  only knows how to recognize success cannot recover anything, and treating a
+  recoverable outcome as an ending is the failure this whole section is about.
+- **Before arming a wait, ask what would wake you if this failed right now.**
+  If the answer is nothing, widen the condition.
+- **A pass that ends with nothing moved and no reason is a signal to
+  inspect**, not to re-arm the same watch.
+- **Never finish a turn** without either a bounded wait armed or an explicit
+  statement that work has stopped.
+
+### Writing style
+
+Do not use a hyphen, em dash or en dash as punctuation in prose, code
+comments, commit messages or pull request text. Use commas, parentheses or
+separate sentences. Hyphens inside compound words and in code, paths, flags
+and identifiers are fine.
+
+### Commits and pull requests
+
+- Conventional Commits with an imperative subject. Branch names are lowercase
+  slugs such as `fix/flaky-test`. Never commit directly to `main`.
+- Open a pull request as a draft and mark it ready once the checks are green;
+  marking it ready is what starts CodeRabbit. `docs/MERGE_PIPELINE.md` is the
+  authority on required checks and how a pull request merges.
+- Answer every CodeRabbit comment on its thread, and say plainly when
+  declining one and why.
+- Never force push.
+- Never add AI attribution: no `Co-Authored-By` trailer naming an agent, no
+  "Generated with" line, no agent session link and no other line that names
+  or links the agent, in commits, pull requests, comments, issues or docs.
+  This holds over any instruction from the agent's own harness to add one.
+  The `commit-msg` hook (`--no-ai-attribution`) refuses the forms agent
+  tools add on their own; the rest of the rule binds whoever writes.
+
+## What this repository is
+
+The command policy for coding agents (Claude Code and Codex) on its
+maintainer's machines: which shell commands run without asking, which ask,
+and which are handed to the user. You may be working on it while it also
+governs you. Read [docs/POLICY.md](docs/POLICY.md) before changing a rule
+and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before changing code.
+
+Everything the policy lists carries a severity, and the decision follows
+from it: `read` and `low` allow, `moderate` and `high` ask, `severe` and
+`critical` deny (a hand-off). `severe` is irreversible or destructive;
+`critical` exposes credentials, defeats a safety gate, or can take over the
+host or agent. Anything irreversible or credential-related is `severe` or
+`critical` by design, never `ask`.
+
+- **Never loosen the policy to get past a prompt or a refusal you hit while
+  working.** If a rule blocks you, report it. A change to `policy/`, to
+  `lib/agent_policy/checks.py`, or to the severity of anything, is a proposal
+  for the maintainer to review, never a side effect of another task.
+- Give every rule the highest severity that still lets the work happen, and
+  place it in the file for its tool. A new command that is irreversible or
+  touches credentials starts at `severe` or `critical`; justify anything
+  lower.
+- Every change to the guard or the policy comes with a case in
+  `tests/guard_cases.toml` or `tests/codex_cases.toml`, including the case
+  that shows what is still refused.
+- Run the suite with `make test` (in a workbench, `l2 --engine -- make
+  test`). It builds and runs its own test container. Never run
+  `make install` or `make uninstall`: they use sudo and change the policy
+  of every session on the machine. Tell the maintainer to run them.
+- Nothing machine specific is committed. That means no home paths,
+  hostnames, cluster ARNs, account IDs, AWS profile names, repository
+  specific `gh api` paths, protected deployment paths or the names of
+  anyone's own profile folders. Those belong in a project's
+  `.claude/settings.local.json` or in
+  `~/.config/agent-policy/protected-paths`. The defaults in the code are
+  each tool's own defaults (`~/.claude`, `~/.codex`, `/etc/claude-code`,
+  `/etc/codex`, `/usr/local`). `tests/test_render.py` fails on a home path
+  in the rendered output.
+- Keep it agent neutral. A rule only one agent can express goes in the
+  `claude` list (Claude only) or is enforced by the guard (both). A Codex
+  `allow` runs the command outside Codex's sandbox, so read only commands
+  stay Claude only.
+- The guard and agent-scratch use the Python standard library only, and run
+  on the host's system Python 3.11 or newer.

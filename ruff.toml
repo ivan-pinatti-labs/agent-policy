@@ -1,0 +1,38 @@
+# Ruff configuration, from pre-commit-checklists' templates/ruff.toml.
+#
+# checklist-dev-python passes --extend-select S to ruff-check on its own, so
+# the flake8-bandit floor holds whatever this file says; this file adds the
+# rest of the ruleset and the few per-file exceptions below.
+
+# The guard and agent-scratch run on the host's system Python, so the target
+# is the oldest one they support (tomllib, used by the renderer, is 3.11).
+target-version = "py311"
+line-length = 100
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes, undefined names and unused imports
+    "I",   # isort, import ordering
+    "B",   # flake8-bugbear, likely bugs and design problems
+    "S",   # flake8-bandit, the security rules
+    "UP",  # pyupgrade, drop idioms the target version obsoletes
+    "C4",  # flake8-comprehensions
+    "RUF", # ruff's own rules
+]
+
+[lint.per-file-ignores]
+# The guard, agent-scratch and the renderer put lib/ (or tools/) on sys.path
+# before importing from it, so they work from a checkout and from the
+# install prefix alike; the imports cannot move to the top (E402).
+"hooks/guard" = ["E402"]
+"bin/agent-scratch" = ["E402", "S603", "S607"]
+"tools/*.py" = ["E402"]
+# containers.py asks the container engine about a container: a subprocess
+# with the engine from PATH is its job. Every call is an argument list,
+# never a shell string, so S602 (shell injection) stays on everywhere.
+"lib/agent_policy/containers.py" = ["S603", "S607"]
+# Tests run the guard, agent-scratch and codex as subprocesses on purpose,
+# with argument lists, against fixtures they built themselves.
+"tests/**" = ["E402", "S101", "S108", "S603", "S607"]

@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# AWS CLI and eksctl. Read verbs (describe, list, get) are free; write verbs
+# ask, and so does reading a secret's value. Profiles and account IDs are
+# machine specific and stay in the project's own settings. The globs start
+# with `*` so that `AWS_PROFILE=x aws ...` matches too. Codex gets only the
+# prefix rules: its rules cannot match a verb in the middle of a command.
+
+[[rule]]
+severity = "read"
+reason = "Read AWS resources"
+prefix = [
+  ["aws", "sts", "get-caller-identity"],
+  ["aws", "s3", "ls"],
+  ["aws", "logs", ["tail", "filter-log-events", "get-log-events"]],
+  ["eksctl", ["get", "describe"]],
+]
+claude = [
+  "Bash(aws * describe-*)",
+  "Bash(aws * list-*)",
+  "Bash(aws * get-*)",
+  "Bash(aws s3api head-*)",
+]
+
+[[rule]]
+severity = "high"
+reason = "Changes AWS resources or reads a secret value"
+prefix = [
+  ["aws", "s3", ["cp", "mv", "rm", "rb", "mb", "sync"]],
+  ["eksctl", ["create", "delete", "upgrade", "scale", "drain", "utils", "set", "unset"]],
+]
+claude = [
+  "Bash(*aws * create-*)", "Bash(*aws * delete-*)", "Bash(*aws * put-*)",
+  "Bash(*aws * update-*)", "Bash(*aws * modify-*)", "Bash(*aws * terminate-*)",
+  "Bash(*aws * start-*)", "Bash(*aws * stop-*)", "Bash(*aws * reboot-*)",
+  "Bash(*aws * attach-*)", "Bash(*aws * detach-*)", "Bash(*aws * associate-*)",
+  "Bash(*aws * disassociate-*)", "Bash(*aws * register-*)", "Bash(*aws * deregister-*)",
+  "Bash(*aws * invoke*)", "Bash(*aws * send-*)", "Bash(*aws * publish*)",
+  "Bash(*aws * tag-*)", "Bash(*aws * untag-*)", "Bash(*aws * set-*)",
+  "Bash(*aws * add-*)", "Bash(*aws * remove-*)", "Bash(*aws * run-*)",
+  "Bash(*aws * restore-*)", "Bash(*aws * copy-*)", "Bash(*aws * import-*)",
+  "Bash(*aws * enable-*)", "Bash(*aws * disable-*)",
+  "Bash(*aws ssm get-parameter* --with-decryption*)",
+  "Bash(*aws secretsmanager get-secret-value*)",
+]
+
+[[rule]]
+severity = "severe"
+reason = "Deletes a bucket and everything in it: the user runs it"
+claude = ["Bash(*aws s3 rb *--force*)"]

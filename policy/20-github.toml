@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# GitHub CLI. The pull request flow is the agent's to run (draft, checks,
+# ready, review replies, `gh pr merge --auto`). `gh api` is allowed because
+# the guard asks before any call that is not a GET (-X/--method in any
+# spelling, or -f/-F/--input, which make gh send a POST).
+
+[[rule]]
+severity = "read"
+reason = "Read GitHub state"
+prefix = [
+  ["gh", ["issue", "pr"], ["view", "list", "status"]],
+  ["gh", "pr", ["checks", "diff"]],
+  ["gh", ["repo", "release", "workflow", "run", "gist", "label", "ruleset",
+          "codespace", "extension", "cache", "variable", "secret", "config"],
+    ["view", "list", "get"]],
+  ["gh", "search"],
+  ["gh", "milestone", "list"],
+  ["gh", "auth", "status"],
+  ["gh", "status"],
+  ["gh", "browse"],
+  ["gh", "attestation", "verify"],
+  ["gh", "api"],
+  ["gh", "repo", "clone"],
+  ["gh", ["release", "run"], "download"],
+  ["gh", "run", "watch"],
+]
+
+[[rule]]
+severity = "low"
+reason = "The pull request flow"
+prefix = [
+  ["gh", "pr", ["create", "edit", "comment", "review", "ready", "merge",
+                "close", "reopen", "checkout"]],
+  ["gh", "issue", ["create", "comment", "edit"]],
+  ["gh", "run", ["rerun", "cancel"]],
+]
+
+[[rule]]
+severity = "high"
+reason = "Changes repository settings, secrets, releases or publishes content"
+prefix = [
+  ["gh", "repo", ["create", "delete", "archive", "rename", "edit", "fork", "sync"]],
+  ["gh", "release", ["create", "delete", "edit", "upload", "delete-asset"]],
+  ["gh", ["secret", "variable"], ["set", "delete"]],
+  ["gh", "gist", ["create", "edit", "delete", "clone"]],
+  ["gh", "issue", ["close", "delete", "transfer", "lock", "pin"]],
+  ["gh", "workflow", ["run", "enable", "disable"]],
+  ["gh", "label", ["create", "edit", "delete", "clone"]],
+  ["gh", "cache", "delete"],
+  ["gh", "auth", ["login", "logout", "refresh", "setup-git", "token", "switch"]],
+  ["gh", "extension", ["install", "upgrade", "remove"]],
+]
+claude = [
+  "Bash(*gh api*-X POST*)", "Bash(*gh api*-XPOST*)", "Bash(*gh api*--method POST*)", "Bash(*gh api*--method=POST*)",
+  "Bash(*gh api*-X PUT*)", "Bash(*gh api*-XPUT*)", "Bash(*gh api*--method PUT*)", "Bash(*gh api*--method=PUT*)",
+  "Bash(*gh api*-X PATCH*)", "Bash(*gh api*-XPATCH*)", "Bash(*gh api*--method PATCH*)", "Bash(*gh api*--method=PATCH*)",
+  "Bash(*gh api*-X DELETE*)", "Bash(*gh api*-XDELETE*)", "Bash(*gh api*--method DELETE*)", "Bash(*gh api*--method=DELETE*)",
+]
+
+[[rule]]
+severity = "severe"
+reason = "Skips the merge queue and branch protection: the user runs it"
+claude = ["Bash(*gh pr merge*--admin*)"]

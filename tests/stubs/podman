@@ -1,0 +1,31 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""A fake podman for the agent-scratch tests.
+
+Appends each call to $STUB_LOG as a JSON line. `<kind> inspect <name>`
+prints $STUB_STATE/<kind>/<name>.json or fails like podman does. A listing
+(`ps`, `network ls`, `volume ls`) prints $STUB_STATE/list/<ps|network|volume>.
+"""
+
+import json
+import os
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+with open(os.environ["STUB_LOG"], "a", encoding="utf-8") as log:
+    log.write(json.dumps(args) + "\n")
+state = os.environ["STUB_STATE"]
+if len(args) >= 3 and args[1] == "inspect":
+    path = os.path.join(state, args[0], args[2] + ".json")
+    if os.path.exists(path):
+        print(Path(path).read_text(encoding="utf-8"))
+        sys.exit(0)
+    print(f"Error: no such object: {args[2]}", file=sys.stderr)
+    sys.exit(125)
+listing = {"ps": "ps", "network": "network", "volume": "volume"}.get(args[0])
+if listing and ("ls" in args or args[0] == "ps"):
+    path = os.path.join(state, "list", listing)
+    if os.path.exists(path):
+        print(Path(path).read_text(encoding="utf-8"))
+sys.exit(0)

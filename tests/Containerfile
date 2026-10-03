@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+# Test image, built and run by `make test`: Python for the guard and the
+# renderer, git for agent-scratch, and the Codex CLI so the rendered rules are
+# checked by Codex itself (`codex execpolicy check`). Packages are not pinned
+# (see .devcontainer/README.md); the base image digest and the Codex version
+# are.
+# Pinned by digest; Renovate keeps it current.
+FROM docker.io/library/debian:13-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+
+# hadolint ignore=DL3008
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 git nodejs npm ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# renovate: datasource=npm depName=@openai/codex
+ARG CODEX_VERSION=0.157.1
+RUN npm install -g "@openai/codex@${CODEX_VERSION}" \
+  && npm cache clean --force \
+  && codex --version
+
+RUN useradd --create-home --uid 1000 tester
+USER 1000
+WORKDIR /work

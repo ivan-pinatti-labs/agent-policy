@@ -1,0 +1,277 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""A scratchpad agents may build in and tear down without asking.
+
+Everything belongs to a slug (a short name for the task, such as the
+worktree's branch slug):
+
+  folder     $AGENT_SCRATCH_ROOT/as-<slug>   (default ~/scratch/as-<slug>)
+  podman     containers, networks and volumes named as-<slug>-<name>
+              and labelled io.agent-policy.scratch=<slug>
+
+Creating something here is checked (no privileged containers, no host
+namespaces, bind mounts only from the scratch folder or the current
+project). Removing something is refused unless it carries this slug's
+label, so the helper cannot be pointed at anything it did not create.
+Agent rules allow `agent-scratch` outright; the checks live here.
+
+  agent-scratch dir     <slug>
+  agent-scratch run     <slug> [podman run options] <image> [command...]
+  agent-scratch create  <slug> [podman create options] <image> [command...]
+  agent-scratch network <slug> <name> [--internal] [--subnet CIDR] [--ipv6] [--disable-dns]
+  agent-scratch volume  <slug> <name>
+  agent-scratch exec    <slug> <name> <command...>
+  agent-scratch rm      <slug> <name>...
+  agent-scratch ls      [<slug>]
+  agent-scratch purge   <slug>
+"""
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+for candidate in (HERE / "lib", HERE.parent / "lib"):
+    if (candidate / "agent_policy").is_dir():
+        sys.path.insert(0, str(candidate))
+        break
+
+from agent_policy import containers
+
+ENGINE = "podman"
+PREFIX = "as-"
+LABEL = containers.SCRATCH_LABEL
+SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$")
+DEFAULT_NETWORKS = {"none", "pasta", "slirp4netns", "private", "bridge", "podman"}
+NETWORK_OPTIONS = {
+    "--internal": False,
+    "--ipv6": False,
+    "--disable-dns": False,
+    "--subnet": True,
+    "--gateway": True,
+    "--ip-range": True,
+}
+
+
+class Refused(Exception):
+    pass
+
+
+def home():
+    return os.environ.get("HOME", os.path.expanduser("~"))
+
+
+def scratch_root():
+    return containers.expand(os.environ.get("AGENT_SCRATCH_ROOT", "~/scratch"), "/", home())
+
+
+def scratch_dir(slug):
+    return os.path.join(scratch_root(), PREFIX + slug)
+
+
+def full_name(slug, name):
+    if not NAME.match(name):
+        raise Refused(f"'{name}' is not a valid name")
+    prefix = f"{PREFIX}{slug}-"
+    return name if name.startswith(prefix) else prefix + name
+
+
+def project_root(cwd):
+    try:
+        out = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return cwd
+
+
+def engine(*args, capture=False):
+    if capture:
+        return subprocess.run([ENGINE, *args], capture_output=True, text=True, check=False)
+    return subprocess.run([ENGINE, *args], check=False).returncode
+
+
+def owned(kind, name, slug):
+    info = containers.inspect(ENGINE, kind, name)
+    if info is None:
+        return None
+    return containers.labels_of(info).get(LABEL) == slug
+
+
+def cmd_dir(slug):
+    path = scratch_dir(slug)
+    os.makedirs(path, exist_ok=True)
+    print(path)
+    return 0
+
+
+def cmd_run(slug, args, verb):
+    cwd = os.getcwd()
+    reasons = [reason for _severity, reason in containers.run_findings(args, cwd, home())]
+    allowed = [scratch_dir(slug), project_root(cwd)]
+    for _flag, source in containers.mount_sources(args):
+        if not containers.is_host_path(source):
+            if not source.startswith(f"{PREFIX}{slug}-"):
+                reasons.append(f"named volume {source} is not a scratch volume of {slug}")
+            continue
+        path = containers.expand(source, cwd, home())
+        if not any(containers.under(path, root) for root in allowed):
+            reasons.append(f"bind mount {path} is outside the scratch folder and the project")
+    out, i, named = [], 0, False
+    while i < len(args):
+        arg = args[i]
+        flag, eq, value = arg.partition("=")
+        if flag in ("--name", "--network", "--net", "--pod") and not eq:
+            value = args[i + 1] if i + 1 < len(args) else ""
+            i += 1
+        if flag == "--name":
+            out.append(f"--name={full_name(slug, value)}")
+            named = True
+        elif flag in ("--network", "--net"):
+            nets = [n.split(":", 1)[0] for n in value.split(",")]
+            for net in nets:
+                if net not in DEFAULT_NETWORKS and not net.startswith(f"{PREFIX}{slug}-"):
+                    reasons.append(f"network {net} is not a scratch network of {slug}")
+            out.append(f"--network={value}")
+        elif flag == "--pod":
+            reasons.append("--pod is not supported in the scratchpad")
+        else:
+            out.append(arg)
+        i += 1
+    if reasons:
+        raise Refused("; ".join(sorted(set(reasons))))
+    if not named:
+        out.insert(0, f"--name={PREFIX}{slug}-{os.urandom(3).hex()}")
+    return engine(verb, f"--label={LABEL}={slug}", *out)
+
+
+def cmd_network(slug, name, opts):
+    i = 0
+    while i < len(opts):
+        flag = opts[i].split("=", 1)[0]
+        if flag not in NETWORK_OPTIONS:
+            raise Refused(f"network option {opts[i]} is not allowed in the scratchpad")
+        i += 2 if NETWORK_OPTIONS[flag] and "=" not in opts[i] else 1
+    return engine("network", "create", f"--label={LABEL}={slug}", *opts, full_name(slug, name))
+
+
+def cmd_volume(slug, name):
+    return engine("volume", "create", f"--label={LABEL}={slug}", full_name(slug, name))
+
+
+def cmd_exec(slug, name, rest):
+    target = full_name(slug, name)
+    if owned("container", target, slug) is not True:
+        raise Refused(f"{target} is not a scratch container of {slug}")
+    return engine("exec", target, *rest)
+
+
+def cmd_rm(slug, names):
+    status = 0
+    for name in names:
+        target = full_name(slug, name)
+        for kind, remove in (
+            ("container", ["rm", "-f"]),
+            ("network", ["network", "rm"]),
+            ("volume", ["volume", "rm"]),
+        ):
+            mine = owned(kind, target, slug)
+            if mine is None:
+                continue
+            if not mine:
+                raise Refused(f"{target} exists but is not labelled {LABEL}={slug}")
+            status |= engine(*remove, target)
+            break
+        else:
+            print(f"agent-scratch: nothing named {target}", file=sys.stderr)
+            status |= 1
+    return status
+
+
+def labelled(kind_args, slug):
+    flt = f"label={LABEL}" + (f"={slug}" if slug else "")
+    out = engine(
+        *kind_args,
+        "--filter",
+        flt,
+        "--format",
+        "{{.Name}}" if kind_args[0] != "ps" else "{{.Names}}",
+        capture=True,
+    )
+    return [name for name in out.stdout.split() if name]
+
+
+def cmd_ls(slug):
+    for title, kind in (
+        ("containers", ["ps", "-a"]),
+        ("networks", ["network", "ls"]),
+        ("volumes", ["volume", "ls"]),
+    ):
+        print(f"{title}: {' '.join(labelled(kind, slug)) or '-'}")
+    root = scratch_root()
+    if os.path.isdir(root):
+        dirs = sorted(
+            d for d in os.listdir(root) if d.startswith(PREFIX) and (not slug or d == PREFIX + slug)
+        )
+        print(f"folders: {' '.join(dirs) or '-'}")
+    return 0
+
+
+def cmd_purge(slug):
+    status = 0
+    for name in labelled(["ps", "-a"], slug):
+        status |= engine("rm", "-f", name)
+    for name in labelled(["network", "ls"], slug):
+        status |= engine("network", "rm", name)
+    for name in labelled(["volume", "ls"], slug):
+        status |= engine("volume", "rm", name)
+    path = scratch_dir(slug)
+    if os.path.isdir(path) and containers.under(path, scratch_root()) and path != scratch_root():
+        shutil.rmtree(path)
+    return status
+
+
+def main(argv):
+    if len(argv) < 1 or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0 if argv else 2
+    verb, rest = argv[0], argv[1:]
+    if verb == "ls":
+        return cmd_ls(rest[0] if rest else None)
+    if not rest or not SLUG.match(rest[0]):
+        raise Refused("the first argument must be a slug: lowercase letters, digits and dashes")
+    slug, rest = rest[0], rest[1:]
+    if verb == "dir":
+        return cmd_dir(slug)
+    if verb in ("run", "create"):
+        return cmd_run(slug, rest, verb)
+    if verb == "network" and rest:
+        return cmd_network(slug, rest[0], rest[1:])
+    if verb == "volume" and len(rest) == 1:
+        return cmd_volume(slug, rest[0])
+    if verb == "exec" and len(rest) >= 2:
+        return cmd_exec(slug, rest[0], rest[1:])
+    if verb == "rm" and rest:
+        return cmd_rm(slug, rest)
+    if verb == "purge":
+        return cmd_purge(slug)
+    raise Refused(f"unknown or incomplete command: {verb}; see agent-scratch --help")
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Refused as err:
+        print(f"agent-scratch: refused: {err}", file=sys.stderr)
+        sys.exit(2)
