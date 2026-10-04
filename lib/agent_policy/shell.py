@@ -99,9 +99,24 @@ def _substitutions(text):
     return found
 
 
+# A descriptor duplication such as `2>&1` or `>&-`. (?<!\d) keeps the scan
+# linear: a run of digits is only tried from its first digit.
+DUP_REDIRECT = re.compile(r"(?<!\d)(\d*)>&(\d+|-)")
+PATH_CHARS = frozenset("_./~-")
+
+
+def _drop_duplication(match, text):
+    """`2>&1` becomes `2>/dev/null`; `>&2x`, a csh-style `>&FILE`, is left for
+    the file-redirect rewrite below."""
+    following = text[match.end() : match.end() + 1]
+    if following and (following.isalnum() or following in PATH_CHARS):
+        return match.group(0)
+    return match.group(1) + ">/dev/null"
+
+
 def _tokens(text):
     # Redirections that contain & would otherwise read as the & operator.
-    text = re.sub(r"(\d*)>&(\d++|-)(?![\w./~-])", r"\1>/dev/null", text)
+    text = DUP_REDIRECT.sub(lambda m: _drop_duplication(m, text), text)
     # `&>file`, `&>>file` and the csh-style `>&file` all send output to a
     # file: rewrite them to `>`/`>>` so the target is checked as one.
     text = text.replace("&>>", ">>").replace("&>", ">")
