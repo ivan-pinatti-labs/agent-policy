@@ -1,0 +1,185 @@
+---
+# agent-policy's pre-commit config, from github-template. Pulls the
+# checklists from ivan-pinatti-labs/pre-commit-checklists: file hygiene,
+# spelling, the structured file types, credential scanning, the git
+# message and branch name guards, and the Python, shell, Dockerfile and
+# Makefile checklists for what this repository is written in.
+#
+# checklist-github-actions and checklist-dev-docker each run a linter in a
+# container (actionlint-docker, hadolint-docker). In a devcontainer-airlock
+# workbench the hooks run in L2, which gets the engine for them.
+#
+# After cloning, run:
+#
+#   pre-commit install
+#   pre-commit run --all-files
+#
+# (in a workbench: l2-hooks-install, then l2-pre-commit run --all-files).
+# default_install_hook_types installs the commit-msg hook too, which
+# refuses AI attribution lines (--no-ai-attribution below). Every other
+# hook is pinned to stages: [pre-commit] so it does not also re-run during
+# that commit-msg invocation.
+default_install_hook_types: [pre-commit, commit-msg]
+repos:
+  - repo: https://github.com/ivan-pinatti-labs/pre-commit-checklists
+    # Bump this to whatever https://github.com/ivan-pinatti-labs/pre-commit-checklists/releases
+    # lists as latest; see that library's docs/versioning.md for what the
+    # pin means and how a bump can change hook behavior.
+    rev: v3.4.10
+    hooks:
+      # Large-file/merge-conflict/line-ending hygiene, safe on any repo.
+      - id: checklist-basic
+        stages: [pre-commit]
+
+      # Spell-checks every file cspell can read; tune words in .cspell.json.
+      # .secrets.baseline is excluded here, not just in .cspell.json's own
+      # ignorePaths: cspell exits nonzero when a batch of files pre-commit
+      # hands it happens to contain only paths its own ignorePaths already
+      # excludes, since it then reports zero files checked as an error.
+      # Excluding it at the pre-commit level keeps it out of every batch.
+      - id: checklist-spell
+        exclude: ^\.secrets\.baseline$
+        stages: [pre-commit]
+
+      # Lints and link-checks Markdown.
+      - id: checklist-markdown
+        types: [markdown]
+        stages: [pre-commit]
+
+      # Validates JSON syntax and formats with Prettier. types_or: [json,
+      # json5], not a plain types: [json]: .github/renovate.json5 is typed
+      # json5 by identify, not json, so a plain types: [json] would match
+      # nothing on it at all. check-json self-filters on its own
+      # types: [json] and never sees the json5 file, which is correct: it is
+      # a strict JSON parser and renovate.json5 has comments and unquoted
+      # keys. Prettier reads json5 natively and formats it.
+      - id: checklist-json
+        types_or: [json, json5]
+        stages: [pre-commit]
+
+      # Validates YAML syntax, lints with yamllint, formats with Prettier.
+      - id: checklist-yaml
+        types: [yaml]
+        stages: [pre-commit]
+
+      # CITATION.cff needs its own hook, below, and cannot be reached from
+      # this id. See that hook for why.
+
+      # Validates TOML syntax.
+      - id: checklist-toml
+        types: [toml]
+        stages: [pre-commit]
+
+      # Validates XML syntax.
+      - id: checklist-xml
+        types: [xml]
+        stages: [pre-commit]
+
+      # Checks .editorconfig rules are respected.
+      - id: checklist-dev-editorconfig
+        stages: [pre-commit]
+
+      # Blocks committed private keys and known secret patterns. Requires
+      # a .secrets.baseline file at the repo root; see
+      # ivan-pinatti-labs/pre-commit-checklists' scripts/install.sh to generate one.
+      - id: checklist-security-credentials
+        stages: [pre-commit]
+
+      # Rejects branch names that skip a naming convention. No ticket prefix
+      # is required by default.
+      - id: checklist-git-valid-branches
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+      # Rejects commit messages that are not Conventional Commits. No ticket
+      # prefix is required by default.
+      - id: checklist-git-commit-msg
+        args: ["--no-ai-attribution"]
+        stages: [commit-msg]
+        files: COMMIT_EDITMSG$
+
+      # Blocks direct commits to long-lived branches (main, master, develop,
+      # staging by default).
+      - id: checklist-git-protected-branches
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+      # Lints GitHub Actions workflow files with actionlint-docker (needs
+      # Docker on PATH) and audits them with zizmor (needs Python 3.10 or
+      # newer on PATH, offline audits only, no token required); see this
+      # repo's README. This id's own files: pattern already reaches every
+      # workflow the merge pipeline adds (coderabbit-gate.yml,
+      # bot-auto-merge.yml) since both live under .github/; no separate
+      # selector is needed for those.
+      - id: checklist-github-actions
+        files: ^\.github/
+        stages: [pre-commit]
+
+      # check-ast, check-builtin-literals, debug-statements,
+      # name-tests-test, ruff-check --fix (with the flake8-bandit security
+      # floor), ruff-format. The id's own selector is `\.py$`; the guard,
+      # agent-scratch and the fake podman the tests use are extensionless
+      # Python scripts, so they are named here. ruff and the other hooks
+      # still filter on types: [python], which identify reads from the
+      # shebang of an executable file.
+      - id: checklist-dev-python
+        files: (\.py$|^(hooks/guard|bin/agent-scratch|tests/stubs/podman)$)
+        stages: [pre-commit]
+
+      # shellcheck and shfmt over tools/collect.sh and any shell script
+      # added later. No selector: the id has no baked one, and types: [shell]
+      # on the hooks covers extensionless scripts as well.
+      - id: checklist-dev-shell
+        stages: [pre-commit]
+
+      # hadolint over the test image's Containerfile and the L2 Dockerfile.
+      - id: checklist-dev-docker
+        stages: [pre-commit]
+
+      # checkmake over the Makefile this template now ships. Read the
+      # library's checklist-dev-make.yaml before adding a target: checkmake
+      # reads only the first physical line of a .PHONY declaration and
+      # silently drops backslash continuations, so every .PHONY in the
+      # Makefile is written on one line.
+      - id: checklist-dev-make
+        stages: [pre-commit]
+
+  # CITATION.cff is the one file here that no checklist reaches. It is YAML,
+  # but `identify` tags it only `text`, since the tag comes from the extension
+  # and `.cff` is not one it knows. Widening checklist-yaml's `types:`
+  # selector above cannot help: check-yaml and yamllint both carry
+  # `types: [file, yaml]` in their own manifests, which pre-commit ANDs with
+  # whatever a consumer asks for, so the file is dropped by the hook rather
+  # than by the id's selector. Overriding `types:` on the hook itself is the
+  # way in, and that can only be done where the hook is declared, which is
+  # here.
+  #
+  # Worth covering because GitHub reads this file for the "Cite this
+  # repository" widget, where a file it cannot use produces no error anyone
+  # would see.
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        name: yamllint (CITATION.cff)
+        files: ^CITATION\.cff$
+        types: [text]
+        stages: [pre-commit]
+
+  # The other half of that check. yamllint above proves the file parses;
+  # cffconvert validates it against the Citation File Format schema, which
+  # yamllint knows nothing about. pass_filenames is false with the path
+  # written out because cffconvert takes its input through `-i` and rejects
+  # a bare positional argument; `files:` still scopes it to that one file.
+  - repo: local
+    hooks:
+      - id: cffconvert-validate
+        name: cffconvert --validate (CITATION.cff)
+        language: python
+        additional_dependencies: ["cffconvert==2.0.0"]
+        entry: cffconvert --validate -i CITATION.cff
+        files: ^CITATION\.cff$
+        pass_filenames: false
+        stages: [pre-commit]

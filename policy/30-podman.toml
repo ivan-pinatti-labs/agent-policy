@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Podman, rootless. Builds, pulls, runs, execs and stops without asking; the
+# guard asks when a run widens what the container can reach (privileged,
+# host namespaces, devices, mounts of $HOME, credentials or the engine
+# socket) and refuses to stop, remove or exec into a container of a
+# protected deployment (docs/OPERATIONS.md). Removing things asks, except
+# through agent-scratch, which only removes what it created.
+
+[[rule]]
+severity = "read"
+reason = "Inspect podman containers, images, pods, networks and volumes"
+prefix = [
+  ["podman", ["ps", "images", "inspect", "logs", "top", "port", "stats",
+              "history", "diff", "info", "version", "search", "events"]],
+  ["podman", "container", ["ls", "list", "inspect", "exists", "logs", "top",
+                            "stats", "diff", "port"]],
+  ["podman", "image", ["ls", "list", "inspect", "exists", "history", "tree"]],
+  ["podman", "network", ["ls", "list", "inspect", "exists"]],
+  ["podman", "volume", ["ls", "list", "inspect", "exists"]],
+  ["podman", "system", ["df", "info", "events"]],
+  ["podman", "pod", ["ls", "list", "ps", "inspect", "exists", "top", "stats", "logs"]],
+  ["podman", "secret", ["ls", "list", "exists", "inspect"]],
+  ["podman", "healthcheck", "run"],
+  ["podman", "buildx", ["ls", "inspect"]],
+  ["podman", "manifest", "inspect"],
+  ["podman", "compose", ["ps", "ls", "logs", "config", "images", "top",
+                          "version", "port"]],
+  ["podman-compose", ["ps", "logs", "config", "images", "top", "version", "port"]],
+]
+
+[[rule]]
+severity = "low"
+reason = "Build, pull, run and exec with rootless podman; the guard checks run flags"
+prefix = [
+  ["podman", ["build", "pull", "run", "exec", "create", "start", "restart",
+              "stop", "attach", "cp", "wait", "tag"]],
+  ["podman", "buildx", "build"],
+  ["podman", "image", ["build", "pull", "tag"]],
+  ["podman", "container", ["run", "exec", "create", "start", "restart",
+                            "stop", "attach", "cp", "wait"]],
+  ["podman", "network", "create"],
+  ["podman", "volume", "create"],
+  ["podman", "compose", ["up", "build", "pull", "start", "restart", "stop",
+                          "run", "exec", "create"]],
+  ["podman-compose", ["up", "build", "pull", "start", "restart", "stop",
+                      "run", "exec", "create"]],
+  ["agent-scratch"],
+]
+
+[[rule]]
+severity = "moderate"
+reason = "Removes, rewrites or exports podman containers, images, networks or volumes"
+prefix = [
+  ["podman", ["rm", "rmi", "kill", "pause", "unpause", "rename", "untag",
+              "commit", "save", "load", "import", "export", "push", "login",
+              "logout", "mount", "update", "init", "play", "kube", "generate",
+              "auto-update", "checkpoint", "restore", "machine", "farm",
+              "quadlet", "unshare"]],
+  ["podman", "container", ["rm", "kill", "pause", "unpause", "rename",
+                            "commit", "export", "mount", "update", "prune",
+                            "cleanup", "clone", "checkpoint", "restore",
+                            "runlabel"]],
+  ["podman", "image", ["rm", "prune", "load", "import", "save", "push",
+                        "mount", "scp", "sign", "trust", "untag"]],
+  ["podman", "network", ["rm", "prune", "connect", "disconnect", "reload", "update"]],
+  ["podman", "volume", ["rm", "prune", "import", "export", "mount", "reload"]],
+  ["podman", "system", ["prune", "migrate", "renumber", "service", "connection"]],
+  ["podman", "pod", ["rm", "kill", "stop", "prune", "create", "start", "restart"]],
+  ["podman", "secret", ["create", "rm"]],
+  ["podman", "manifest", ["push", "rm", "create", "add", "annotate"]],
+  ["podman", "compose", ["down", "rm", "kill", "pause"]],
+  ["podman-compose", ["down", "rm", "kill", "pause"]],
+]
+# Global flags pick another engine connection or storage root.
+claude = ["Bash(podman -*)"]
+
+[[rule]]
+severity = "severe"
+reason = "Wipes every podman container, image and volume: the user runs it"
+prefix = [["podman", "system", "reset"]]

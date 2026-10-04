@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Incus and LXD system containers and VMs: read only views. Anything that
+# changes an instance falls through to the agent's own default (auto mode,
+# a prompt, or Codex's approval).
+
+[[rule]]
+severity = "read"
+reason = "Read incus and LXD instances, networks, storage and images"
+prefix = [
+  [["incus", "lxc"], ["list", "info", "version"]],
+  [["incus", "lxc"], ["network", "storage", "profile", "project", "image",
+                      "cluster", "operation"], ["list", "show", "info"]],
+  [["incus", "lxc"], "config", ["show", "get"]],
+  [["incus", "lxc"], "config", "device", "show"],
+  [["incus", "lxc"], "storage", "volume", ["list", "show"]],
+]

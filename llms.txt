@@ -1,0 +1,36 @@
+# agent-policy
+
+> One command policy for coding agents (Claude Code and Codex): allow, ask and hand-off tiers written once in TOML, rendered to each agent's native permission rules, enforced further by a shared PreToolUse guard hook, plus a scratchpad helper for throwaway containers.
+> Apache License 2.0. Author: Ivan Pinatti (https://github.com/ivan-pinatti).
+> Canonical repository: https://github.com/ivan-pinatti-labs/agent-policy
+
+## What it does
+
+Decides, for every shell command a coding agent wants to run, whether it runs without asking, asks, or is handed to the user. The same policy is installed for Claude Code (a managed settings drop-in, covering every profile) and Codex (prefix rules and an administrator hook). A guard hook, run by both agents, checks what a command prefix cannot express: flags anywhere on the line, container mounts, and containers that belong to a protected deployment.
+
+## Key files
+
+- [README.md](README.md): what it is, requirements, usage
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the two layers, how each agent receives them, how the guard reads a command
+- [docs/POLICY.md](docs/POLICY.md): tiers, rule format, how to change a rule
+- [docs/SCRATCHPAD.md](docs/SCRATCHPAD.md): the agent-scratch helper
+- [docs/OPERATIONS.md](docs/OPERATIONS.md): install, update both ways, harvest, protected deployments
+- [policy/](policy/): the rules, one TOML file per area
+- [hooks/guard](hooks/guard): the PreToolUse hook
+- [lib/agent_policy/](lib/agent_policy/): command parsing and checks
+- [tools/render.py](tools/render.py): renders the policy for each agent
+
+## Tech stack
+
+- Python 3.11+ standard library (guard, agent-scratch, renderer, tests with unittest)
+- Bash (tools/collect.sh)
+- Podman (test container, agent-scratch)
+- Claude Code managed settings, Codex execpolicy rules and hooks
+
+## Conventions
+
+- Conventional Commits for commit messages, no ticket prefix baked in
+- pre-commit hooks wired up via
+  [ivan-pinatti-labs/pre-commit-checklists](https://github.com/ivan-pinatti-labs/pre-commit-checklists),
+  see [.pre-commit-config.yaml](.pre-commit-config.yaml)
+- Every policy or guard change comes with a test case; nothing machine specific is committed

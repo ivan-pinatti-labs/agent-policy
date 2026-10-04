@@ -1,0 +1,45 @@
+---
+name: Tests
+
+# Runs `make test` on every pull request against main and in the merge
+# queue: it builds tests/Containerfile with podman (preinstalled on the
+# Ubuntu runner) and runs the suite in it, the same way a contributor does.
+# That includes `codex execpolicy check` over the rendered Codex rules, so a
+# Codex release that changes how rules are read fails here.
+#
+# The job publishes the check context "Tests" (its name:). Add it to main's
+# required status checks once its first run on a pull request has passed
+# (see docs/MERGE_PIPELINE.md). It needs no token beyond contents: read, and
+# it runs the pull request's own code, so it keeps exactly that.
+
+"on":
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  # Required checks are evaluated against the merge queue's own commit, so
+  # the queue needs this trigger or it waits forever for a "Tests" context.
+  merge_group:
+
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.number ||
+    github.event.merge_group.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the suite in the test container
+        run: make test

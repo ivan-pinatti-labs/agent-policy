@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Rule format, shared by every file in policy/:
+#
+#   [[rule]]
+#   severity = "read" | "low" | "moderate" | "high" | "severe" | "critical"
+#   reason   = "one line, shown to Codex as the justification"
+#   agents   = ["claude", "codex"]   # optional, default both
+#   prefix   = [["git", ["status", "log"]], ["git", "diff"]]
+#   claude   = ["Bash(aws * describe-*)", "WebFetch(domain:example.org)"]
+#
+# severity is the one scale for everything the policy lists; the agent's
+# decision follows from it (docs/POLICY.md):
+#   read, low            -> allow   (no prompt)
+#   moderate, high       -> ask     (the agent's normal prompt)
+#   severe, critical     -> deny    (a hand-off: the user runs it)
+# severe is irreversible or destructive; critical exposes or exfiltrates
+# credentials, defeats a safety gate, or can take over the host or agent.
+#
+# prefix: command prefixes, word by word. A word may be a list of
+# alternatives. Rendered to Claude Code as `Bash(<words>)` and
+# `Bash(<words> *)`, and to Codex as prefix_rule(). Codex has no
+# wildcards, so anything that needs one goes in `claude` (Claude only).
+#
+# A deny is "the agent hands it to the user", not "never". The guard hook
+# (hooks/guard) covers what a prefix cannot: flags anywhere on the line,
+# container mounts, credential paths, the live deployment. See README.md.
+#
+# This file: read-only inspection. Claude only, because in Codex an allow
+# rule runs the command outside the sandbox, and these already run fine
+# inside it.
+
+[[rule]]
+severity = "read"
+agents = ["claude"]
+reason = "Read-only file, text and system inspection"
+prefix = [
+  ["cat"], ["ls"], ["find"], ["grep"], ["rg"], ["echo"], ["printf"], ["wc"],
+  ["jq"], ["yq"], ["head"], ["tail"], ["file"], ["stat"], ["du"], ["df"],
+  ["tree"], ["readlink"], ["realpath"], ["basename"], ["dirname"], ["sort"],
+  ["uniq"], ["diff"], ["cmp"], ["which"], ["type"], ["whoami"], ["id"],
+  ["hostname"], ["uname"], ["date"], ["uptime"], ["free"], ["pwd"],
+  ["sha256sum"], ["sha1sum"], ["md5sum"], ["base64"], ["cut"], ["tr"],
+  ["tac"], ["rev"], ["column"], ["nl"], ["fmt"], ["comm"], ["paste"],
+  ["test"], ["true"], ["false"], ["man"], ["ps"], ["pgrep"],
+  ["lsblk"], ["ip"], ["ss"], ["dig"], ["nslookup"], ["host"], ["ping"],
+  ["mkdir", "-p"], ["mktemp"], ["sleep"],
+  ["journalctl"],
+  ["systemctl", ["status", "list-units", "list-unit-files", "is-active",
+                  "is-enabled", "is-failed", "show", "cat", "list-timers",
+                  "list-sockets", "list-dependencies"]],
+  ["systemctl", "--user", ["status", "list-units", "is-active", "show", "cat"]],
+  ["timedatectl", "status"], ["hostnamectl", "status"],
+  ["loginctl", ["list-sessions", "show-session"]],
+  ["make", ["-n", "--dry-run", "--question", "--print-data-base"]],
+]
+claude = [
+  "WebSearch",
+  "WebFetch(domain:github.com)",
+  "WebFetch(domain:raw.githubusercontent.com)",
+  "WebFetch(domain:api.github.com)",
+  "WebFetch(domain:docs.github.com)",
+  "WebFetch(domain:code.claude.com)",
+  "WebFetch(domain:developers.openai.com)",
+  "WebFetch(domain:docs.podman.io)",
+  "WebFetch(domain:docs.docker.com)",
+  "WebFetch(domain:kubernetes.io)",
+  "WebFetch(domain:kubernetes-sigs.github.io)",
+  "WebFetch(domain:artifacthub.io)",
+  "WebFetch(domain:docs.cloudposse.com)",
+  "WebFetch(domain:atmos.tools)",
+  "WebFetch(domain:docs.aws.amazon.com)",
+  "WebFetch(domain:cloud.google.com)",
+  "WebFetch(domain:docs.cloud.google.com)",
+  "WebFetch(domain:opentofu.org)",
+  "WebFetch(domain:developer.hashicorp.com)",
+  "WebFetch(domain:www.hashicorp.com)",
+  "WebFetch(domain:registry.terraform.io)",
+  "WebFetch(domain:docs.datadoghq.com)",
+  "WebFetch(domain:external-secrets.io)",
+  "WebFetch(domain:pre-commit.com)",
+  "WebFetch(domain:docs.python.org)",
+]
+
+[[rule]]
+severity = "high"
+agents = ["claude"]
+reason = "find can delete files or run any command"
+claude = [
+  "Bash(find * -delete*)",
+  "Bash(find * -exec *)",
+  "Bash(find * -execdir *)",
+  "Bash(find * -ok *)",
+  "Bash(find * -fprint*)",
+  "Bash(sort * -o *)",
+]
+
+[[rule]]
+severity = "low"
+agents = ["claude"]
+reason = "The agent scratchpad folder (see bin/agent-scratch)"
+claude = [
+  "Edit(~/scratch/**)",
+  "Write(~/scratch/**)",
+  "Read(~/scratch/**)",
+]
+
+[[rule]]
+severity = "critical"
+agents = ["claude"]
+reason = "Agent credentials"
+claude = [
+  "Read(~/.claude*/.credentials.json)",
+  "Read(~/.codex/auth.json)",
+  "Read(~/.ssh/id_*)",
+]

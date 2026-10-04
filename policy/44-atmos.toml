@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Atmos (Cloud Posse). Describing stacks and planning is free; applying and
+# state surgery ask; destroying is handed to the user. Stack names and AWS
+# profiles are machine specific and stay in the project's own settings.
+
+[[rule]]
+severity = "read"
+reason = "Describe stacks and plan"
+prefix = [
+  ["atmos", ["describe", "list", "validate", "version", "vendor"]],
+  ["atmos", "terraform", ["plan", "output", "show", "validate", "init"]],
+  ["atmos", "terraform", "state", ["list", "show"]],
+]
+
+[[rule]]
+severity = "high"
+reason = "Changes real infrastructure or its state"
+prefix = [
+  ["atmos", "terraform", ["apply", "deploy", "import", "workspace"]],
+  ["atmos", "terraform", "state", ["rm", "mv", "push"]],
+]
+claude = ["Bash(*atmos terraform apply*)", "Bash(*atmos terraform deploy*)"]
+
+[[rule]]
+severity = "severe"
+reason = "Destroys infrastructure: the user runs it"
+prefix = [["atmos", "terraform", "destroy"]]
+claude = ["Bash(*atmos terraform destroy*)"]

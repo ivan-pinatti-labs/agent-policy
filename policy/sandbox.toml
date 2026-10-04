@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Claude Code's Bash sandbox (bubblewrap on Linux). Unlike the rules and the
+# guard, which read the command text, the sandbox is enforced by the kernel,
+# so no spelling of a command gets past it. Codex already runs every command
+# in its own sandbox unless an allow rule lifts it out.
+#
+# The paths it denies are not listed here: tools/build reads them from
+# lib/agent_policy/containers.py, the same lists the guard checks, so the
+# two layers cannot drift apart.
+#   denyRead   every credential folder and file (CREDENTIAL_DIRS, _FILES,
+#              _PREFIXES)
+#   denyWrite  PATH and runtime folders (EXEC_DIRS). Shell startup files,
+#              .gitconfig, .git and .claude are always write-protected by
+#              the sandbox itself.
+# Network: domains come from the WebFetch(domain:...) rules in policy/;
+# anything else prompts.
+
+[sandbox]
+# false: the sandbox is only in dist/claude/sandbox-trial.json, for a
+# session started with `claude --settings <that file>`. true: it also goes
+# into the managed drop-in, for every session on the machine.
+install = false
+
+# If bubblewrap or socat is missing, false runs commands unsandboxed (and
+# /sandbox says so); true makes Claude Code refuse to start.
+fail_if_unavailable = false
+
+# false keeps today's prompts: the sandbox is an extra layer, not a reason
+# to stop asking. true would run every sandboxed command without a prompt.
+auto_allow_bash_if_sandboxed = false
+
+# Commands that run outside the sandbox. Each needs something the sandbox
+# denies (the container engine, an ssh key, a token or cloud credentials);
+# the static rules and the guard still apply to every one of them.
+excluded_commands = [
+  "podman *", "docker *", "podman-compose *", "docker-compose *",
+  "agent-scratch *", "git *", "gh *", "ssh *", "scp *",
+  "aws *", "eksctl *", "kubectl *", "helm *",
+  "terraform *", "tofu *", "atmos *",
+]
+
+# Folders sandboxed commands may write besides the working directory.
+allow_write = ["~/scratch"]

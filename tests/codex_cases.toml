@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# What Codex decides from the rendered rules alone (no guard), checked with
+# `codex execpolicy check`. expect: allow | prompt | forbidden | none (no
+# rule matched: Codex's sandbox and approval policy decide). Prefix rules
+# cannot see a flag after the first position, which is why the guard runs
+# for Codex too; the trailing --force case below documents that.
+
+[[case]]
+command = ["git", "push", "origin", "feature"]
+expect = "allow"
+[[case]]
+command = ["git", "push", "--force", "origin", "feature"]
+expect = "forbidden"
+[[case]]
+command = ["git", "push", "origin", "feature", "--force"]
+expect = "allow"  # the guard denies this one
+[[case]]
+command = ["git", "status"]
+expect = "none"   # read-only: left to Codex's sandbox
+[[case]]
+command = ["git", "reset", "--hard"]
+expect = "prompt"
+[[case]]
+command = ["podman", "build", "-t", "x", "."]
+expect = "allow"
+[[case]]
+command = ["podman", "rm", "-f", "x"]
+expect = "prompt"
+[[case]]
+command = ["podman", "system", "reset"]
+expect = "forbidden"
+[[case]]
+command = ["agent-scratch", "purge", "demo"]
+expect = "allow"
+[[case]]
+command = ["gh", "pr", "merge", "12", "--auto"]
+expect = "allow"
+[[case]]
+command = ["gh", "auth", "status"]
+expect = "allow"
+[[case]]
+command = ["gh", "auth", "token"]
+expect = "prompt"
+[[case]]
+command = ["terraform", "plan"]
+expect = "allow"
+[[case]]
+command = ["terraform", "apply"]
+expect = "prompt"
+[[case]]
+command = ["terraform", "destroy"]
+expect = "forbidden"
+[[case]]
+command = ["curl", "https://example.org"]
+expect = "none"
+[[case]]
+command = ["tofu", "plan"]
+expect = "allow"
+[[case]]
+command = ["tofu", "destroy"]
+expect = "forbidden"
+[[case]]
+command = ["docker", "build", "-t", "x", "."]
+expect = "allow"
+[[case]]
+command = ["docker", "run", "--rm", "x"]
+expect = "prompt"
+[[case]]
+command = ["kubectl", "get", "pods"]
+expect = "allow"
+[[case]]
+command = ["kubectl", "delete", "pod", "x"]
+expect = "prompt"
+[[case]]
+command = ["atmos", "terraform", "plan", "vpc", "-s", "dev"]
+expect = "allow"
+[[case]]
+command = ["atmos", "terraform", "destroy", "vpc", "-s", "dev"]
+expect = "forbidden"
+[[case]]
+command = ["aws", "s3", "sync", "a", "s3://b"]
+expect = "prompt"
+[[case]]
+command = ["ansible-galaxy", "collection", "install", "x.y"]
+expect = "prompt"
+[[case]]
+command = ["asdf", "current"]
+expect = "allow"
+[[case]]
+command = ["asdf", "plugin", "add", "x"]
+expect = "prompt"

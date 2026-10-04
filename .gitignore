@@ -1,0 +1,39 @@
+# pre-commit
+pre-commit.log
+
+# Python (scripts/*.py)
+__pycache__/
+*.pyc
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.swp
+.history/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local secrets and scratch
+.env
+.env.local
+*.local
+
+# Personal AI agent files, never committed (see AGENTS.md)
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/agents/local/
+.claude/worktrees/
+
+# Built policy (make build)
+dist/
+
+# Coverage (make coverage)
+.coverage
+.coverage.*
+coverage.xml

@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# HTTP clients. Claude may fetch without asking; the guard asks before any
+# request with a body or a method other than GET/HEAD. Codex gets no allow
+# rule: an allowed curl would run outside its sandbox, network included, so
+# it keeps Codex's own approval.
+
+[[rule]]
+severity = "low"
+agents = ["claude"]
+reason = "Fetch over HTTP; the guard asks before a write"
+prefix = [["curl"]]

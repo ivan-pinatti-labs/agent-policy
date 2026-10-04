@@ -1,0 +1,103 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""PreToolUse hook for shell commands, for Claude Code and Codex alike.
+
+Reads the hook payload on stdin (both agents send tool_input.command and
+cwd) and answers only when lib/agent_policy/checks.py finds something:
+
+  deny  the agent is told not to retry or work around it, and to ask the
+        user to run the command themselves (`! <command>` in either agent).
+  ask   Claude Code shows its normal prompt. Codex cannot be told to prompt
+        from a hook, and its allow rules run outside the sandbox without
+        asking, so for Codex an ask becomes a deny that says approval is
+        needed.
+
+Silence means no opinion: the static rules (policy/*.toml) decide.
+"""
+
+import json
+import os
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+for candidate in (HERE / "lib", HERE.parent / "lib"):
+    if (candidate / "agent_policy").is_dir():
+        sys.path.insert(0, str(candidate))
+        break
+
+from agent_policy.checks import evaluate
+
+# A hook that crashes reports a non-blocking error, and the command runs
+# unchecked; so every failure to check is answered with a refusal instead.
+UNCHECKED = (
+    "agent-policy could not check this command, so it refused it rather than "
+    "letting it through unchecked."
+)
+
+HAND_OFF = (
+    "Do not retry it, rephrase it or work around it. If it is really "
+    "needed, ask the user to run it themselves; they can type "
+    "`! {command}` in Claude Code or Codex."
+)
+
+
+def respond(decision, reason):
+    json.dump(
+        {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": decision,
+                "permissionDecisionReason": reason,
+            }
+        },
+        sys.stdout,
+    )
+
+
+def main(argv):
+    agent = "claude"
+    if "--agent" in argv and argv.index("--agent") + 1 < len(argv):
+        agent = argv[argv.index("--agent") + 1]
+    try:
+        payload = json.load(sys.stdin)
+    except ValueError:
+        respond("deny", UNCHECKED)
+        return 0
+    tool_input = payload.get("tool_input") if isinstance(payload, dict) else None
+    command = tool_input.get("command") if isinstance(tool_input, dict) else None
+    if isinstance(command, list):
+        command = " ".join(str(word) for word in command)
+    if not isinstance(command, str) or not command.strip():
+        if not isinstance(payload, dict):
+            respond("deny", UNCHECKED)
+        return 0
+    cwd = payload.get("cwd")
+    try:
+        finding = evaluate(command, cwd if isinstance(cwd, str) and cwd else os.getcwd())
+    except Exception:
+        respond("deny", UNCHECKED)
+        return 0
+    if finding is None:
+        return 0
+    one_line = " ".join(command.split())
+    tag = f"agent-policy, {finding.severity}"
+    if finding.decision == "deny":
+        respond(
+            "deny",
+            f"Blocked ({tag}): {finding.reason}. " + HAND_OFF.format(command=one_line),
+        )
+    elif agent == "codex":
+        respond(
+            "deny",
+            f"Needs the user's approval ({tag}): {finding.reason}. "
+            "Explain why it is needed and ask the user to approve it, or "
+            f"to run it themselves with `! {one_line}`.",
+        )
+    else:
+        respond("ask", f"{tag}: {finding.reason}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

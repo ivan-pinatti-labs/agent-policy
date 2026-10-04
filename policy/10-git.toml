@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# git. The everyday flow (branch, commit, push, rebase) runs without asking;
+# the guard asks before the forms that throw work away (reset --hard,
+# checkout -- ., branch -D, stash drop, clean -f...) and hands off anything
+# that rewrites remote history or skips the git hooks.
+
+[[rule]]
+severity = "read"
+agents = ["claude"]
+reason = "Read-only git"
+prefix = [
+  ["git", ["status", "log", "diff", "show", "blame", "describe", "shortlog",
+            "rev-parse", "rev-list", "ls-files", "ls-tree", "ls-remote",
+            "cat-file", "merge-base", "name-rev", "reflog", "grep", "range-diff",
+            "for-each-ref", "check-ignore", "count-objects", "help", "version"]],
+  ["git", "stash", ["list", "show"]],
+  ["git", "worktree", "list"],
+  ["git", "config", ["--get", "--get-all", "--list", "-l", "--show-origin"]],
+]
+
+[[rule]]
+severity = "low"
+reason = "The everyday git flow; the guard catches the destructive forms"
+prefix = [
+  ["git", ["add", "commit", "fetch", "pull", "push", "checkout", "switch",
+            "merge", "rebase", "cherry-pick", "revert", "stash", "branch",
+            "tag", "remote", "restore", "mv", "rm", "worktree", "submodule",
+            "notes", "am", "apply", "init", "clone"]],
+]
+
+[[rule]]
+severity = "high"
+reason = "Discards uncommitted work or rewrites local refs"
+prefix = [
+  ["git", ["clean", "reset", "update-ref", "replace", "gc", "prune"]],
+  ["git", "reflog", ["expire", "delete"]],
+  ["git", "config", "--global"],
+]
+
+[[rule]]
+severity = "severe"
+reason = "Rewrites or deletes remote history: the user runs it"
+prefix = [
+  ["git", "push", ["--force", "-f", "--force-with-lease", "--force-if-includes",
+                    "--mirror", "--delete", "-d", "--prune"]],
+  ["git", ["filter-branch", "filter-repo"]],
+]
+# Claude matches globs anywhere on the line; Codex relies on the guard for
+# flags after the first position.
+claude = [
+  "Bash(*git*push*--force*)",
+  "Bash(*git*push*--force-with-lease*)",
+  "Bash(*git*push*--force-if-includes*)",
+  "Bash(*git*push* -f*)",
+  "Bash(*git*push*--mirror*)",
+  "Bash(*git*push*--delete*)",
+  "Bash(*git*push* -d *)",
+  "Bash(*git*push* :*)",
+  "Bash(*git*push* +*)",
+  "Bash(*git filter-branch*)",
+  "Bash(*git filter-repo*)",
+  "Bash(*git reset --hard origin/*)",
+]
+
+[[rule]]
+severity = "critical"
+reason = "Skips the git hooks, which run the secret scanners: the user runs it"
+prefix = [
+  ["git", "push", "--no-verify"],
+  ["git", "commit", ["--no-verify", "-n"]],
+]
+claude = [
+  "Bash(*git*push*--no-verify*)",
+  "Bash(*git*commit*--no-verify*)",
+  "Bash(*core.hooksPath*)",
+]

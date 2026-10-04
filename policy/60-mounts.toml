@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Mounts and namespaces. Listing what is mounted is free. Mounting,
+# unmounting, FUSE mounts (sshfs, rclone, bindfs) and new namespaces ask:
+# a mount changes what a path means for every process that reads it. The
+# guard raises the severity when a mount exposes credentials elsewhere,
+# covers a file that runs as code, or lands in a protected deployment.
+
+[[rule]]
+severity = "read"
+agents = ["claude"]
+reason = "List mounts and block devices"
+prefix = [
+  ["findmnt"],
+  ["mount", ["-l", "--show-labels"]],
+  ["mountpoint"],
+]
+
+[[rule]]
+severity = "high"
+reason = "Mounts, unmounts or enters namespaces"
+prefix = [
+  ["mount"],
+  ["umount"],
+  ["fusermount"],
+  ["fusermount3"],
+  ["sshfs"],
+  ["bindfs"],
+  ["rclone", "mount"],
+  ["udisksctl", ["mount", "unmount", "loop-setup", "loop-delete"]],
+  ["losetup"],
+  ["guestmount"],
+  ["unshare"],
+  ["nsenter"],
+]

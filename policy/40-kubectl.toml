@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# kubectl. Reading a cluster is free; changing it asks; deleting a whole
+# namespace is handed to the user. Cluster contexts are machine specific and
+# stay in the project's own settings.local.json. The globs start with `*` so
+# that `kubectl --context x delete ...` matches too.
+
+[[rule]]
+severity = "read"
+reason = "Read cluster state"
+prefix = [
+  ["kubectl", ["get", "describe", "logs", "top", "explain", "api-resources",
+                "api-versions", "version", "cluster-info", "events"]],
+  ["kubectl", "auth", ["can-i", "whoami"]],
+  ["kubectl", "config", ["view", "get-contexts", "current-context"]],
+]
+
+[[rule]]
+severity = "high"
+reason = "Changes cluster state or switches context"
+prefix = [
+  ["kubectl", ["apply", "create", "delete", "edit", "patch", "replace",
+                "scale", "autoscale", "rollout", "drain", "cordon", "uncordon",
+                "taint", "label", "annotate", "exec", "run", "cp",
+                "port-forward", "set", "debug", "expose"]],
+  ["kubectl", "config", ["use-context", "set-context", "delete-context", "set"]],
+]
+claude = ["Bash(*kubectl * delete *)", "Bash(*kubectl * apply *)", "Bash(*kubectl * exec *)"]
+
+[[rule]]
+severity = "severe"
+reason = "Deletes a whole namespace: the user runs it"
+claude = ["Bash(*kubectl * delete namespace*)", "Bash(*kubectl * delete ns *)"]
