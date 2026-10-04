@@ -57,6 +57,7 @@
     "extensionless",
     "fgrep",
     "fprint",
+    "fromkeys",
     "fsmonitor",
     "fusermount",
     "getcwd",

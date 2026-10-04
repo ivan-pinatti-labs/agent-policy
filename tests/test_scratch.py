@@ -107,6 +107,20 @@ class Scratch(unittest.TestCase):
                 self.assertEqual(2, self.scratch("run", "demo", *args, "debian:13-slim").returncode)
         self.assertEqual([], self.engine_calls())
 
+    def test_run_checks_the_label_of_an_existing_volume(self):
+        self.own("volume", "as-demo-data", "other")
+        proc = self.scratch("run", "demo", "-v", "as-demo-data:/d", "debian:13-slim")
+        self.assertEqual(2, proc.returncode)
+        self.assertIn("not labelled", proc.stderr)
+        self.assertEqual([], self.engine_calls())
+
+    def test_run_creates_a_missing_volume_with_the_label(self):
+        proc = self.scratch("run", "demo", "-v", "as-demo-new:/d", "debian:13-slim")
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        calls = self.engine_calls()
+        self.assertEqual(["volume", "create", f"--label={LABEL}=demo", "as-demo-new"], calls[0])
+        self.assertEqual("run", calls[1][0])
+
     def test_run_allows_scratch_dir_and_volume(self):
         scratch_dir = self.home / "scratch" / "as-demo"
         proc = self.scratch(

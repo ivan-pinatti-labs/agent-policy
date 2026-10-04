@@ -42,7 +42,9 @@ agent-scratch purge   <slug>
   like), `--cap-add`, `--device`, and turning off confinement;
 - bind mounts from anywhere but the slug's folder or the current project
   (its git top level);
-- named volumes and networks that are not this slug's;
+- named volumes and networks that are not this slug's, judged by label, not
+  by name (a volume named `as-<slug>-*` that lacks the label is refused; one
+  that does not exist yet is created with the label first);
 - `--pod`.
 
 **`network`** accepts only the options listed above (no `macvlan` or

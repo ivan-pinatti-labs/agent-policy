@@ -120,10 +120,21 @@ def cmd_run(slug, args, verb):
     cwd = os.getcwd()
     reasons = [reason for _severity, reason in containers.run_findings(args, cwd, home())]
     allowed = [scratch_dir(slug), project_root(cwd)]
+    missing_volumes = []
     for _flag, source in containers.mount_sources(args):
         if not containers.is_host_path(source):
             if not source.startswith(f"{PREFIX}{slug}-"):
                 reasons.append(f"named volume {source} is not a scratch volume of {slug}")
+                continue
+            # The name alone proves nothing: a volume made outside the
+            # scratchpad can carry it. An existing one must carry the label;
+            # a missing one is created with it, rather than left for podman
+            # to create unlabelled, where rm and purge could not reach it.
+            mine = owned("volume", source, slug)
+            if mine is None:
+                missing_volumes.append(source)
+            elif not mine:
+                reasons.append(f"volume {source} exists but is not labelled {LABEL}={slug}")
             continue
         path = containers.expand(source, cwd, home())
         if not any(containers.under(path, root) for root in allowed):
@@ -153,6 +164,9 @@ def cmd_run(slug, args, verb):
         raise Refused("; ".join(sorted(set(reasons))))
     if not named:
         out.insert(0, f"--name={PREFIX}{slug}-{os.urandom(3).hex()}")
+    for volume in dict.fromkeys(missing_volumes):
+        if engine("volume", "create", f"--label={LABEL}={slug}", volume) != 0:
+            raise Refused(f"could not create the scratch volume {volume}")
     return engine(verb, f"--label={LABEL}={slug}", *out)
 
 
