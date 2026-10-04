@@ -544,3 +544,20 @@ expect = "deny"
 [[case]]
 command = "podman run --rm -vcache:/c alpine true"
 expect = "none"
+
+# A descriptor number before a redirect must not become an argument
+[[case]]
+command = "cp evil ~/.bashrc 2>/dev/null"
+expect = "deny"
+[[case]]
+command = "mv x ~/.zshrc 2>&1"
+expect = "deny"
+[[case]]
+command = "install -m755 x ~/.local/bin/x 1>/dev/null 2>&1"
+expect = "deny"
+[[case]]
+command = "cp src/a.py src/b.py 2>/dev/null"
+expect = "none"
+[[case]]
+command = "echo 2 > notes.txt"
+expect = "none"

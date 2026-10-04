@@ -99,10 +99,17 @@ def _substitutions(text):
     return found
 
 
-# A descriptor duplication such as `2>&1` or `>&-`. (?<!\d) keeps the scan
-# linear: a run of digits is only tried from its first digit.
-DUP_REDIRECT = re.compile(r"(?<!\d)(\d*)>&(\d+|-)")
+# A descriptor duplication such as `2>&1` or `>&-`. Only the `>&N` part is
+# matched and rewritten; a descriptor number before it stays in the text.
+DUP_REDIRECT = re.compile(r">&(\d+|-)")
 PATH_CHARS = frozenset("_./~-")
+# A descriptor number written against its redirect (`2>`, `12<`). Splitting
+# `<` and `>` into tokens would otherwise leave the number behind as a word,
+# and a command judged by its last argument (cp, mv) would read `2` as its
+# destination. Which descriptor it is does not matter to the policy, so the
+# number is dropped. The single-character lookbehind only lets a run of
+# digits start at a word boundary, so the scan stays linear.
+FD_NUMBER = re.compile(r"(?<![^\s;&|()<>])\d+(?=[<>])")
 
 
 def _drop_duplication(match, text):
@@ -111,10 +118,11 @@ def _drop_duplication(match, text):
     following = text[match.end() : match.end() + 1]
     if following and (following.isalnum() or following in PATH_CHARS):
         return match.group(0)
-    return match.group(1) + ">/dev/null"
+    return ">/dev/null"
 
 
 def _tokens(text):
+    text = FD_NUMBER.sub("", text)
     # Redirections that contain & would otherwise read as the & operator.
     text = DUP_REDIRECT.sub(lambda m: _drop_duplication(m, text), text)
     # `&>file`, `&>>file` and the csh-style `>&file` all send output to a
