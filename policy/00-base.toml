@@ -42,7 +42,7 @@ prefix = [
   ["hostname"], ["uname"], ["date"], ["uptime"], ["free"], ["pwd"],
   ["sha256sum"], ["sha1sum"], ["md5sum"], ["base64"], ["cut"], ["tr"],
   ["tac"], ["rev"], ["column"], ["nl"], ["fmt"], ["comm"], ["paste"],
-  ["test"], ["true"], ["false"], ["man"], ["printenv"], ["ps"], ["pgrep"],
+  ["test"], ["true"], ["false"], ["man"], ["ps"], ["pgrep"],
   ["lsblk"], ["ip"], ["ss"], ["dig"], ["nslookup"], ["host"], ["ping"],
   ["mkdir", "-p"], ["mktemp"], ["sleep"],
   ["journalctl"],

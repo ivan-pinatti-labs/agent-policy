@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 #
-# Copy every agent permission file on this machine into a staging folder,
+# Copy every agent permission rule on this machine into a staging folder,
 # so tools/harvest.py can read them inside a container without mounting the
-# home folder (or anything holding credentials). Only settings JSON and
-# Codex .rules files are copied. The index maps each copy back to its
-# original path, with the home folder written as ~.
+# home folder (or anything holding credentials). From a settings file only
+# its `permissions` object is staged, never the rest (a settings file can
+# carry an API key under `env`); Codex .rules files hold nothing but rules
+# and are copied whole. The index maps each copy back to its original path,
+# with the home folder written as ~.
 #
 #   tools/collect.sh <dest> [root...]      roots: folders to search for
 #                                          project .claude/ settings
@@ -24,13 +26,28 @@ add() {
   [ -f "$src" ] || return 0
   n=$((n + 1))
   name="$(printf '%03d' "$n")-$(basename "$src")"
-  cp -- "$src" "$dest/$name"
+  case "$src" in
+  *.json) python3 -c '
+import json, sys
+try:
+    data = json.load(open(sys.argv[1], encoding="utf-8"))
+except (OSError, ValueError):
+    data = {}
+perms = data.get("permissions") if isinstance(data, dict) else None
+json.dump({"permissions": perms if isinstance(perms, dict) else {}}, sys.stdout)
+' "$src" >"$dest/$name" ;;
+  *) cp -- "$src" "$dest/$name" ;;
+  esac
   printf '%s\t%s\n' "$name" "${src/#$HOME/\~}" >>"$dest/index.tsv"
 }
 
 # Claude Code profiles: the default one, the one this shell points at, and
 # any others listed (space separated) in CLAUDE_CONFIG_DIRS.
-for dir in "$HOME/.claude" ${CLAUDE_CONFIG_DIR:-} ${CLAUDE_CONFIG_DIRS:-}; do
+profiles=("$HOME/.claude")
+[ -n "${CLAUDE_CONFIG_DIR:-}" ] && profiles+=("$CLAUDE_CONFIG_DIR")
+# shellcheck disable=SC2206 # CLAUDE_CONFIG_DIRS is a space separated list
+[ -n "${CLAUDE_CONFIG_DIRS:-}" ] && profiles+=($CLAUDE_CONFIG_DIRS)
+for dir in "${profiles[@]}"; do
   add "$dir/settings.json"
 done
 for dir in "$HOME/.codex" ${CODEX_HOMES:-}; do

@@ -28,6 +28,13 @@ for candidate in (HERE / "lib", HERE.parent / "lib"):
 
 from agent_policy.checks import evaluate
 
+# A hook that crashes reports a non-blocking error, and the command runs
+# unchecked; so every failure to check is answered with a refusal instead.
+UNCHECKED = (
+    "agent-policy could not check this command, so it refused it rather than "
+    "letting it through unchecked."
+)
+
 HAND_OFF = (
     "Do not retry it, rephrase it or work around it. If it is really "
     "needed, ask the user to run it themselves; they can type "
@@ -55,18 +62,22 @@ def main(argv):
     try:
         payload = json.load(sys.stdin)
     except ValueError:
-        respond(
-            "deny",
-            "agent-policy could not read the hook payload, so it refused "
-            "the command rather than letting it through unchecked.",
-        )
+        respond("deny", UNCHECKED)
         return 0
-    command = (payload.get("tool_input") or {}).get("command")
+    tool_input = payload.get("tool_input") if isinstance(payload, dict) else None
+    command = tool_input.get("command") if isinstance(tool_input, dict) else None
     if isinstance(command, list):
-        command = " ".join(command)
+        command = " ".join(str(word) for word in command)
     if not isinstance(command, str) or not command.strip():
+        if not isinstance(payload, dict):
+            respond("deny", UNCHECKED)
         return 0
-    finding = evaluate(command, payload.get("cwd") or os.getcwd())
+    cwd = payload.get("cwd")
+    try:
+        finding = evaluate(command, cwd if isinstance(cwd, str) and cwd else os.getcwd())
+    except Exception:
+        respond("deny", UNCHECKED)
+        return 0
     if finding is None:
         return 0
     one_line = " ".join(command.split())

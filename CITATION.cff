@@ -23,5 +23,4 @@ keywords:
   - permissions
   - pre-tool-use-hook
   - podman
-version: 0.1.0
-date-released: "2026-10-03"
+version: 0.0.1

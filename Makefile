@@ -85,7 +85,7 @@ harvest: image
 		-v "$$staging:/staging:ro,Z" -w /work $(TEST_IMAGE) python3 tools/harvest.py /staging
 
 install: build
-	sudo install -d -m 0755 $(LIBEXEC)/lib/agent_policy $(CLAUDE_MANAGED_DIR) $(CODEX_SYSTEM_DIR)
+	sudo install -d -m 0755 $(LIBEXEC)/lib/agent_policy $(PREFIX)/bin $(CLAUDE_MANAGED_DIR) $(CODEX_SYSTEM_DIR)
 	sudo install -m 0755 hooks/guard bin/agent-scratch $(LIBEXEC)/
 	sudo install -m 0644 lib/agent_policy/*.py $(LIBEXEC)/lib/agent_policy/
 	sudo ln -sf $(LIBEXEC)/agent-scratch $(PREFIX)/bin/agent-scratch

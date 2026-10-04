@@ -4,43 +4,43 @@
 
 What happens between opening a pull request against this repository and it
 landing on `main`. Ported from `ivan-pinatti-labs/rsync-crypt`'s document of
-the same name, trimmed to what this repository actually has: no app code, no
-build, no test suite, and no Dockerfile, so there is no `Tests` context and
-no `Docker Build` job here, unlike that repository. Where the reasoning is
+the same name, trimmed to what this repository actually has: a Python test
+suite that runs in its own container (the `Tests` context), and no image it
+publishes, so there is no `Docker Build` job here, unlike that repository.
+Where the reasoning is
 identical it is only summarized, not restated; see rsync-crypt's
 `docs/MERGE_PIPELINE.md` for the fuller version this one was trimmed from,
 and `ivan-pinatti-labs/.github`'s `docs/MERGE_PIPELINE.md` for a smaller
 worked example of the same kind of trim, for a repository with no merge
-queue and no `Pin Only` at all. This repository sits between the two: it has
-no app code like `.github`, but it does have a merge queue and a
+queue and no `Pin Only` at all. This repository has a merge queue and a
 dependency-bot fast lane, like rsync-crypt, so it carries `Pin Only` and
-`bot-auto-merge.yml`'s full owner-approval and bot-approval mechanics that
-`.github`'s copy does not need.
+`bot-auto-merge.yml`'s full owner-approval and bot-approval mechanics.
 
-This repository is also a GitHub template (`is_template: true`): every file
-this document describes ships to a repository created from it. What does
-and does not follow automatically is called out at the end, in "Using this
-pipeline from a repository created from this template."
+The pipeline came from `ivan-pinatti-labs/github-template`; the section
+"Using this pipeline from a repository created from this template" at the
+end lists the setup that did not come with the files.
 
 ## Every required status context
 
 | Context | What it actually proves | Who publishes it |
 | --- | --- | --- |
 | `Pre-commit` | The full pre-commit hook set passed over every file | `pull-request.yml`, as a job |
+| `Tests` | `make test` passed: the guard, the renderer (including the Codex rules checked by `codex execpolicy check`), harvest and agent-scratch, in the test container | `tests.yml`, as a job |
 | `SonarQube` | SonarQube Cloud analyzed the pull request and its quality gate passed; on a merge queue commit it passes without analyzing, see below | `sonarqube.yml`, as a job |
 | `Pin Only` | A dependency bot's diff changes nothing but a version in a pin position; `success` with a "not a dependency bot pull request" description on everything else | `coderabbit-gate.yml`, published directly onto the head SHA |
 | `Review Verified` | CodeRabbit's actual review outcome, not merely that it reported something | `coderabbit-gate.yml`, published directly onto the head SHA |
 
-`Pre-commit` and `SonarQube` are ordinary workflow jobs: GitHub reports a
+`Pre-commit`, `Tests` and `SonarQube` are ordinary workflow jobs: GitHub reports a
 job's own pass or fail as the check. The other two are commit statuses, written directly by a
 workflow step rather than read off a job's outcome, for the same reason as
 in rsync-crypt: a status a workflow chooses whether to write, and what to
 write, does not read as passed merely because it was skipped.
 
-There is no `Tests` context and no `Docker Build` job: this repository has
-no app code to run tests against and nothing to build a container image
-from. Every place rsync-crypt's document reasons about those two, this one
-simply drops.
+There is no `Docker Build` job: the only image here is the test image, which
+`Tests` builds on every run and nothing publishes. `Tests` also runs on
+`merge_group`, so the queue's own commit is tested before it lands, and
+`bot-auto-merge.yml` waits for it alongside the other required contexts
+before approving.
 
 `SonarQube` is the `sonarqube.yml` job. It runs SonarQube Cloud's analysis
 on every pull request from a branch of this repository and every push to

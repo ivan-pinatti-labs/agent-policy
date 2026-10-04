@@ -127,6 +127,19 @@ class HookProtocol(unittest.TestCase):
         self.assertEqual("deny", out["permissionDecision"])
         self.assertIn("approval", out["permissionDecisionReason"])
 
+    def test_any_failure_to_check_refuses(self):
+        for payload in ("[1, 2]", '"text"', '{"tool_input": {"command": "cat \\u0000x"}}'):
+            with self.subTest(payload=payload):
+                proc = subprocess.run(
+                    [sys.executable, str(ROOT / "hooks" / "guard")],
+                    input=payload,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                out = json.loads(proc.stdout)["hookSpecificOutput"]
+                self.assertEqual("deny", out["permissionDecision"])
+
     def test_unreadable_payload_fails_closed(self):
         proc = subprocess.run(
             [sys.executable, str(ROOT / "hooks" / "guard")],

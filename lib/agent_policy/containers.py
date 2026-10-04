@@ -184,15 +184,20 @@ def mount_sources(args):
             value, flag = args[i + 1], arg
         elif arg.startswith(("--volume=", "--mount=")):
             flag, _, value = arg.partition("=")
-        elif arg.startswith("-v") and len(arg) > 2 and arg[2] in "/~.$":
-            flag, value = "-v", arg[2:]
+        elif arg.startswith("-v") and len(arg) > 2:
+            # -v/host:/c, -v=/host:/c and -vname:/c: every attached form.
+            flag, value = "-v", arg[2:].removeprefix("=")
         if value is None:
             continue
         if flag == "--mount":
             fields = dict(p.partition("=")[::2] for p in value.split(","))
-            if fields.get("type", "volume") not in ("bind", "glob"):
+            # bind and glob name a host path, volume a named volume (which
+            # agent-scratch must check too); tmpfs and the rest have no source.
+            if fields.get("type", "volume") not in ("bind", "glob", "volume"):
                 continue
             source = fields.get("source") or fields.get("src") or ""
+            if not source:
+                continue
         else:
             source = value.split(":", 1)[0]
         out.append((flag, source))

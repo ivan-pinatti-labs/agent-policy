@@ -102,7 +102,7 @@ name: Bot Auto Merge
   # its check as well, so its run finishing has to re-check the rollup the
   # same way.
   workflow_run:
-    workflows: ["CodeRabbit Gate", "SonarQube"]
+    workflows: ["CodeRabbit Gate", "SonarQube", "Tests"]
     types: [completed]
 
 # The floor. Each job widens it for itself.
@@ -547,7 +547,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          required='["Pre-commit","SonarQube","Pin Only","Review Verified"]'
+          required='["Pre-commit","Tests","SonarQube","Pin Only","Review Verified"]'
           for _ in $(seq 1 24); do
             # $owner, $name and $number below are GraphQL query variables,
             # not shell expansions; they are meant to stay literal inside

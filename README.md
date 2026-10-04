@@ -43,9 +43,11 @@ without being able to touch anything it did not create.
   `make harvest` and `agent-scratch`.
 - `sudo`, once per install or update: the policy goes into system folders
   so that agents cannot edit it.
-- For development, [pre-commit](https://pre-commit.com/#install), or a
-  [devcontainer-airlock](.devcontainer/README.md) workbench, which carries
-  it.
+- For development, [pre-commit](https://pre-commit.com/#install) and a
+  `docker` command (Docker, or Podman's `podman-docker` compatibility
+  package): two hooks, actionlint and hadolint, run their linters as
+  containers through it. A [devcontainer-airlock](.devcontainer/README.md)
+  workbench carries both.
 
 ## Usage
 

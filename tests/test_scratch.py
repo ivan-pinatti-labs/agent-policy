@@ -96,6 +96,17 @@ class Scratch(unittest.TestCase):
                 self.assertEqual(2, proc.returncode)
         self.assertEqual([], self.engine_calls())
 
+    def test_run_refuses_other_volumes_in_any_spelling(self):
+        for args in (
+            ["--mount", "type=volume,src=live-db,dst=/d"],
+            ["-v=live-db:/d"],
+            ["-vlive-db:/d"],
+            ["-v=/etc:/e"],
+        ):
+            with self.subTest(args=args):
+                self.assertEqual(2, self.scratch("run", "demo", *args, "debian:13-slim").returncode)
+        self.assertEqual([], self.engine_calls())
+
     def test_run_allows_scratch_dir_and_volume(self):
         scratch_dir = self.home / "scratch" / "as-demo"
         proc = self.scratch(

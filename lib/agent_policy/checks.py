@@ -520,6 +520,10 @@ def _gh(seg, ctx):
         yield Finding("severe", "gh repo delete removes the repository")
     elif args[:2] == ["auth", "token"]:
         yield Finding("critical", "gh auth token prints the GitHub token")
+    elif args[:2] == ["auth", "status"] and any(
+        a in ("-t", "--show-token") or (_short_cluster(a) and "t" in a) for a in args[2:]
+    ):
+        yield Finding("critical", "gh auth status --show-token prints the GitHub token")
 
 
 GH_FIELD_FLAGS = ("-f", "-F", "--field", "--raw-field", "--input")
@@ -563,6 +567,7 @@ def _gh_api(args):
 CURL_BODY = (
     "-d",
     "--data",
+    "--data-ascii",
     "--data-raw",
     "--data-binary",
     "--data-urlencode",
@@ -573,19 +578,33 @@ CURL_BODY = (
     "-T",
     "--upload-file",
 )
-CURL_OUTPUT = ("-o", "--output")
+
+
+def _curl_outputs(args):
+    """Every local path curl would write: -o/--output in any spelling, and
+    --output-dir, where -O and --remote-name-all write."""
+    for i, arg in enumerate(args):
+        nxt = args[i + 1] if i + 1 < len(args) else ""
+        if arg in ("-o", "--output", "--output-dir") and nxt:
+            yield nxt
+        elif arg.startswith(("--output=", "--output-dir=")):
+            yield arg.split("=", 1)[1]
+        elif _short_cluster(arg) and "o" in arg[1:]:
+            # -ofile, or a cluster such as -sSLo with the path next.
+            rest = arg[arg.index("o", 1) + 1 :]
+            if rest:
+                yield rest
+            elif nxt:
+                yield nxt
 
 
 def _curl(seg, ctx):
     method = None
-    args = seg.words[1:]
-    for i, arg in enumerate(args):
-        nxt = args[i + 1] if i + 1 < len(args) else ""
-        if arg in CURL_OUTPUT and nxt:
-            finding = _write_finding(containers.expand(nxt, ctx["cwd"], ctx["home"]), ctx)
-            if finding:
-                yield finding
-                return
+    for target in _curl_outputs(seg.words[1:]):
+        finding = _write_finding(containers.expand(target, ctx["cwd"], ctx["home"]), ctx)
+        if finding:
+            yield finding
+            return
     for i, arg in enumerate(seg.words[1:], start=1):
         nxt = seg.words[i + 1] if i + 1 < len(seg.words) else ""
         if arg in ("-X", "--request"):

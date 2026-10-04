@@ -101,8 +101,11 @@ def _substitutions(text):
 
 def _tokens(text):
     # Redirections that contain & would otherwise read as the & operator.
-    text = re.sub(r"(\d*)>&(\d+|-)", r"\1>/dev/null", text)
-    text = text.replace("&>", ">")
+    text = re.sub(r"(\d*)>&(\d+|-)(?![\w./~-])", r"\1>/dev/null", text)
+    # `&>file`, `&>>file` and the csh-style `>&file` all send output to a
+    # file: rewrite them to `>`/`>>` so the target is checked as one.
+    text = text.replace("&>>", ">>").replace("&>", ">")
+    text = re.sub(r">&(?=\s*[^\s\d-])", ">", text)
     text = text.replace("\n", " ; ")
     lexer = shlex.shlex(text, posix=True, punctuation_chars=";&|()<>")
     lexer.whitespace_split = True

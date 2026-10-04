@@ -46,6 +46,15 @@ class Render(unittest.TestCase):
         self.assertEqual("Bash", hook["matcher"])
         self.assertTrue(hook["hooks"][0]["command"].endswith("/guard --agent claude"))
 
+    def test_codex_requirements(self):
+        with open(Path(self.tmp) / "codex" / "requirements.toml", "rb") as handle:
+            req = tomllib.load(handle)
+        self.assertIs(True, req["features"]["hooks"])
+        managed = req["hooks"]["managed_dir"]
+        command = req["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        self.assertTrue(command.startswith(managed + "/guard "), command)
+        self.assertTrue(command.endswith("--agent codex"))
+
     def test_sandbox_trial_file(self):
         trial = json.loads((Path(self.tmp) / "claude" / "sandbox-trial.json").read_text())
         sandbox = trial["sandbox"]

@@ -190,9 +190,19 @@ def render_codex_rules(rules):
 
 
 def render_codex_requirements(libexec):
+    """The guard as a Codex managed hook. Codex loads a hook from
+    requirements.toml only when [hooks] managed_dir names the folder its
+    script lives in, and [features] hooks = true stops a user's own
+    configuration from switching hooks off."""
     return "\n".join(
         [
             MARKER,
+            "",
+            "[features]",
+            "hooks = true",
+            "",
+            "[hooks]",
+            f'managed_dir = "{libexec}"',
             "",
             "[[hooks.PreToolUse]]",
             'matcher = "^Bash$"',

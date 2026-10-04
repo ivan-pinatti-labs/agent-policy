@@ -3,7 +3,7 @@
 agent-policy ships no vendored third-party code. The guard, the scratchpad
 helper and the tools use the Python standard library only.
 
-The test image (`Containerfile.test`) installs the Codex CLI from npm at
+The test image (`tests/Containerfile`) installs the Codex CLI from npm at
 build time, to check the rendered Codex rules with Codex itself. It is a
 test dependency, not distributed with this repository.
 

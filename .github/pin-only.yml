@@ -17,6 +17,8 @@ allowed_paths:
 rules:
   - path: .devcontainer/l2/Dockerfile
     grammars: [image_digest]
+  - path: tests/Containerfile
+    grammars: [digest, annotated_arg]
   - path: .github/workflows/
     grammars:
       - name: action_sha
