@@ -20,6 +20,7 @@ import argparse
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -52,6 +53,9 @@ def normalize(rule):
 def inner(rule):
     match = re.match(r"^(\w+)\((.*)\)$", rule, re.DOTALL)
     return (match.group(1), match.group(2)) if match else (rule, "")
+
+
+STAGED_NAME = re.compile(r"[0-9]{3}-[A-Za-z0-9._-]+")
 
 
 def read_rules(path):
@@ -96,13 +100,21 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("staging", help="folder written by tools/collect.sh")
     args = parser.parse_args(argv)
-    staging = Path(args.staging)
-    policy = render.claude_rules(render.load(Path(__file__).resolve().parent.parent / "policy"))
-    index = dict(
-        line.split("\t", 1)
-        for line in (staging / "index.tsv").read_text().splitlines()
-        if "\t" in line
-    )
+    try:
+        # make harvest mounts the staging folder at /staging; tests use a
+        # temporary folder. Nothing else is a staging folder.
+        staging = render.confine(args.staging, ["/staging", tempfile.gettempdir()], "staging")
+    except render.PolicyError as err:
+        print(f"harvest: {err}", file=sys.stderr)
+        return 1
+    policy = render.claude_rules(render.load(render.REPO_ROOT / "policy"))
+    index = {}
+    for line in (staging / "index.tsv").read_text().splitlines():
+        name, tab, original = line.partition("\t")
+        # collect.sh writes plain names (NNN-basename); anything else, such
+        # as a path with a separator or `..`, is not one of its files.
+        if tab and STAGED_NAME.fullmatch(name):
+            index[name] = original
     totals = {"generic": 0, "local": 0, "dead": 0, "redundant": 0}
     for name, original in sorted(index.items()):
         rules = read_rules(staging / name)

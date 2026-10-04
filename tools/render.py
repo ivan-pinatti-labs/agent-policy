@@ -15,6 +15,7 @@ import argparse
 import itertools
 import json
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -36,6 +37,23 @@ SEVERITY = {
 }
 CODEX_DECISION = {"allow": "allow", "ask": "prompt", "deny": "forbidden"}
 MARKER = "# Managed by agent-policy (tools/render.py). Local edits are overwritten."
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def confine(path, roots, what):
+    """`path` resolved, if it sits under one of `roots`; PolicyError if not.
+
+    The folders these tools read and write come from the command line, which
+    an agent may write. Each one is resolved (symlinks and `..` included) and
+    must stay inside the places the tool is meant to touch."""
+    resolved = Path(path).resolve()
+    for root in roots:
+        if resolved.is_relative_to(Path(root).resolve()):
+            return resolved
+    allowed = ", ".join(str(r) for r in roots)
+    raise PolicyError(f"{what} {resolved} is outside {allowed}")
 
 
 def decision_of(rule):
@@ -223,16 +241,17 @@ def main(argv=None):
     parser.add_argument("--libexec", default="/usr/local/libexec/agent-policy")
     args = parser.parse_args(argv)
     try:
-        rules = load(args.policy)
+        policy = confine(args.policy, [REPO_ROOT], "--policy")
+        out = confine(args.out, [REPO_ROOT, tempfile.gettempdir()], "--out")
+        rules = load(policy)
     except PolicyError as err:
         print(f"render: {err}", file=sys.stderr)
         return 1
-    out = Path(args.out)
     (out / "claude").mkdir(parents=True, exist_ok=True)
     (out / "codex").mkdir(parents=True, exist_ok=True)
     claude = render_claude(rules, args.libexec)
     try:
-        sandbox_cfg = load_sandbox(args.policy)
+        sandbox_cfg = load_sandbox(policy)
     except PolicyError as err:
         print(f"render: {err}", file=sys.stderr)
         return 1

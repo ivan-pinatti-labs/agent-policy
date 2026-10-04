@@ -46,6 +46,14 @@ class Render(unittest.TestCase):
         self.assertEqual("Bash", hook["matcher"])
         self.assertTrue(hook["hooks"][0]["command"].endswith("/guard --agent claude"))
 
+    def test_paths_outside_the_repo_are_refused(self):
+        import contextlib
+        import io
+
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(1, render.main(["--out", "/etc/agent-policy-test"]))
+            self.assertEqual(1, render.main(["--policy", "/etc", "--out", self.tmp]))
+
     def test_codex_requirements(self):
         with open(Path(self.tmp) / "codex" / "requirements.toml", "rb") as handle:
             req = tomllib.load(handle)

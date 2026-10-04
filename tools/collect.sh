@@ -23,7 +23,7 @@ n=0
 
 add() {
   local src="$1" name
-  [ -f "$src" ] || return 0
+  [[ -f "$src" ]] || return 0
   n=$((n + 1))
   name="$(printf '%03d' "$n")-$(basename "$src")"
   case "$src" in
@@ -44,9 +44,9 @@ json.dump({"permissions": perms if isinstance(perms, dict) else {}}, sys.stdout)
 # Claude Code profiles: the default one, the one this shell points at, and
 # any others listed (space separated) in CLAUDE_CONFIG_DIRS.
 profiles=("$HOME/.claude")
-[ -n "${CLAUDE_CONFIG_DIR:-}" ] && profiles+=("$CLAUDE_CONFIG_DIR")
+[[ -n "${CLAUDE_CONFIG_DIR:-}" ]] && profiles+=("$CLAUDE_CONFIG_DIR")
 # shellcheck disable=SC2206 # CLAUDE_CONFIG_DIRS is a space separated list
-[ -n "${CLAUDE_CONFIG_DIRS:-}" ] && profiles+=($CLAUDE_CONFIG_DIRS)
+[[ -n "${CLAUDE_CONFIG_DIRS:-}" ]] && profiles+=($CLAUDE_CONFIG_DIRS)
 for dir in "${profiles[@]}"; do
   add "$dir/settings.json"
 done
@@ -57,7 +57,7 @@ for dir in "$HOME/.codex" ${CODEX_HOMES:-}; do
   done
 done
 for root in "${roots[@]+"${roots[@]}"}"; do
-  [ -d "$root" ] || continue
+  [[ -d "$root" ]] || continue
   while IFS= read -r -d '' file; do
     add "$file"
   done < <(find "$root" \( -name worktrees -o -name node_modules -o -name .git \) -prune -o \

@@ -101,7 +101,7 @@ def _substitutions(text):
 
 def _tokens(text):
     # Redirections that contain & would otherwise read as the & operator.
-    text = re.sub(r"(\d*)>&(\d+|-)(?![\w./~-])", r"\1>/dev/null", text)
+    text = re.sub(r"(\d*)>&(\d++|-)(?![\w./~-])", r"\1>/dev/null", text)
     # `&>file`, `&>>file` and the csh-style `>&file` all send output to a
     # file: rewrite them to `>`/`>>` so the target is checked as one.
     text = text.replace("&>>", ">>").replace("&>", ">")

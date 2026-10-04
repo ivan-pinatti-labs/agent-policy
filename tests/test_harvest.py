@@ -68,6 +68,17 @@ class Harvest(unittest.TestCase):
         self.assertEqual("1", totals["dead"])
         self.assertEqual("2", totals["redundant"])
 
+    def test_staging_outside_temp_is_refused(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(1, harvest.main(["/etc"]))
+
+    def test_index_names_that_are_paths_are_ignored(self):
+        with open(self.staging / "index.tsv", "a", encoding="utf-8") as index:
+            index.write("../../etc/passwd\t~/x\n003-ok/../../y\t~/y\n")
+        out = self.run_harvest()
+        self.assertNotIn("~/x", out)
+        self.assertNotIn("~/y", out)
+
     def test_normalize_legacy_suffix(self):
         self.assertEqual("Bash(ls *)", harvest.normalize("Bash(ls:*)"))
 
