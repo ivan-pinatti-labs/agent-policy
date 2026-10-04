@@ -152,8 +152,22 @@ def cmd_run(slug, args, verb):
         elif flag in ("--network", "--net"):
             nets = [n.split(":", 1)[0] for n in value.split(",")]
             for net in nets:
-                if net not in DEFAULT_NETWORKS and not net.startswith(f"{PREFIX}{slug}-"):
+                if net in DEFAULT_NETWORKS:
+                    continue
+                if not net.startswith(f"{PREFIX}{slug}-"):
                     reasons.append(f"network {net} is not a scratch network of {slug}")
+                    continue
+                # As with volumes, the name proves nothing: the network must
+                # exist and carry the slug's label. (A missing one would fail
+                # in podman anyway; `agent-scratch network` creates it.)
+                mine = owned("network", net, slug)
+                if mine is None:
+                    reasons.append(
+                        f"network {net} does not exist; create it with "
+                        f"agent-scratch network {slug} <name>"
+                    )
+                elif not mine:
+                    reasons.append(f"network {net} exists but is not labelled {LABEL}={slug}")
             out.append(f"--network={value}")
         elif flag == "--pod":
             reasons.append("--pod is not supported in the scratchpad")

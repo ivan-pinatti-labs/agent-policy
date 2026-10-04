@@ -121,6 +121,15 @@ class Scratch(unittest.TestCase):
         self.assertEqual(["volume", "create", f"--label={LABEL}=demo", "as-demo-new"], calls[0])
         self.assertEqual("run", calls[1][0])
 
+    def test_run_checks_the_label_of_a_network(self):
+        self.own("network", "as-demo-other", "other")
+        for net, why in (("as-demo-other", "not labelled"), ("as-demo-missing", "does not exist")):
+            with self.subTest(net=net):
+                proc = self.scratch("run", "demo", "--network", net, "debian:13-slim")
+                self.assertEqual(2, proc.returncode)
+                self.assertIn(why, proc.stderr)
+        self.assertEqual([], self.engine_calls())
+
     def test_run_allows_scratch_dir_and_volume(self):
         scratch_dir = self.home / "scratch" / "as-demo"
         proc = self.scratch(
@@ -146,9 +155,9 @@ class Scratch(unittest.TestCase):
                 self.assertEqual(
                     2, self.scratch("run", "demo", *flags, "debian:13-slim").returncode
                 )
+        self.own("network", "as-demo-net", "demo")
         self.assertEqual(
-            0,
-            self.scratch("run", "demo", "--network", "as-demo-net", "debian:13-slim").returncode,
+            0, self.scratch("run", "demo", "--network", "as-demo-net", "debian:13-slim").returncode
         )
 
     def test_network_and_volume(self):
