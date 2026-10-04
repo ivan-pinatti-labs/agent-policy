@@ -8,7 +8,7 @@
 # checkmake reads only the first physical line of a .PHONY declaration and
 # silently drops backslash continuations, so every .PHONY here is written on
 # one line (checkmake#280).
-.PHONY: all help workbench-help image build test harvest install uninstall diff clean
+.PHONY: all help workbench-help image build test coverage harvest install uninstall diff clean
 
 # Bare `make` shows the target list rather than doing something surprising.
 all: help
@@ -51,6 +51,7 @@ help:
 		'Targets:' \
 		'  help        Show this message.' \
 		'  test        Run every test in the test container.' \
+		'  coverage    Run the tests with coverage, writing coverage.xml.' \
 		'  build       Build the policy for both agents into dist/.' \
 		'  harvest     Compare this machine'"'"'s permission files with the policy.' \
 		'  diff        Show how the installed policy differs from this checkout.' \
@@ -68,6 +69,12 @@ build: image
 
 test: image
 	$(RUN) python3 -m unittest discover -s tests -v
+
+coverage: image
+	$(RUN) sh -c 'rm -f .coverage .coverage.* && \
+		COVERAGE_PROCESS_START=/work/.coveragerc python3 -m coverage run -m unittest discover -s tests && \
+		python3 -m coverage combine -q && python3 -m coverage xml -q -o coverage.xml && \
+		python3 -m coverage report'
 
 # collect.sh copies only the permission files into a temporary folder, so the
 # container never sees the home folder or anything holding credentials.
@@ -111,4 +118,4 @@ diff: build
 	-diff -u $(LIBEXEC)/agent-scratch bin/agent-scratch
 
 clean:
-	rm -rf dist
+	rm -rf dist .coverage .coverage.* coverage.xml

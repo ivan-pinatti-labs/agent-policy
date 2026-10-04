@@ -83,8 +83,13 @@ jobs:
           # are new code, and a shallow clone makes every line look new.
           fetch-depth: 0
 
-      # No coverage step: this template has no code with tests. A repository
-      # created from it adds one here, before the scan, once it does.
+      # The suite runs in its own container (tests/Containerfile), with the
+      # guard and agent-scratch measured in the subprocesses the tests start,
+      # and writes coverage.xml with paths relative to the repository root,
+      # which sonar-project.properties points the scan at.
+      - name: Coverage
+        if: github.event_name != 'merge_group'
+        run: make coverage
 
       - name: Scan
         if: github.event_name != 'merge_group'

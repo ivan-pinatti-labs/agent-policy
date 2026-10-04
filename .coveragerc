@@ -1,0 +1,18 @@
+# Coverage for `make coverage`. parallel and the absolute data_file let the
+# guard and agent-scratch, run by the tests as subprocesses from other
+# folders, write their data next to the suite's; relative_files keeps the
+# paths in coverage.xml relative to the repository root, where SonarQube
+# Cloud looks for them.
+[run]
+branch = True
+parallel = True
+relative_files = True
+data_file = /work/.coverage
+# Absolute, like data_file: agent-scratch runs from a temporary folder,
+# where relative source paths would match nothing. /work is where the
+# Makefile mounts the repository in the test container.
+source =
+    /work/lib
+    /work/hooks
+    /work/bin
+    /work/tools

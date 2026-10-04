@@ -32,3 +32,8 @@ CLAUDE.local.md
 
 # Built policy (make build)
 dist/
+
+# Coverage (make coverage)
+.coverage
+.coverage.*
+coverage.xml
