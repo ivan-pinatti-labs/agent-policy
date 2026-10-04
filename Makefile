@@ -27,7 +27,10 @@ ENGINE             ?= podman
 WORKSPACE     := $(abspath $(dir $(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null))..)
 HARVEST_ROOTS ?= $(WORKSPACE)
 
-RUN = $(ENGINE) run --rm --network=none --userns=keep-id -v "$(CURDIR):/work:Z" -w /work $(TEST_IMAGE)
+# The image runs as UID 1000; keep-id:uid=1000 maps whoever runs make onto
+# it, so files written to /work (dist/, coverage) belong to that user and the
+# container can write them on any host, a CI runner with UID 1001 included.
+RUN = $(ENGINE) run --rm --network=none --userns=keep-id:uid=1000,gid=1000 -v "$(CURDIR):/work:Z" -w /work $(TEST_IMAGE)
 
 # The workbench targets (make claude, make codex, make unlock and the rest)
 # come from a devcontainer-airlock clone, by default the one next to this
@@ -81,7 +84,7 @@ coverage: image
 harvest: image
 	@staging="$$(mktemp -d)"; trap 'rm -rf "$$staging"' EXIT; \
 	tools/collect.sh "$$staging" $(HARVEST_ROOTS) && \
-	$(ENGINE) run --rm --network=none --userns=keep-id -v "$(CURDIR):/work:ro,Z" \
+	$(ENGINE) run --rm --network=none --userns=keep-id:uid=1000,gid=1000 -v "$(CURDIR):/work:ro,Z" \
 		-v "$$staging:/staging:ro,Z" -w /work $(TEST_IMAGE) python3 tools/harvest.py /staging
 
 install: build
