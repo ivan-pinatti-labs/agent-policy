@@ -41,3 +41,108 @@ reviews:
   #     enabled: false
   #   markdownlint:
   #     enabled: false
+
+  # How hard to look. assertive raises more than chill does; this
+  # repository decides what coding agents may run on a machine, so a missed
+  # edge case costs more than an extra comment.
+  profile: assertive
+
+  # Review guidance. The first entry is the organization's public-repository
+  # rules, kept the same in every ivan-pinatti-labs repository; the rest are
+  # specific to agent-policy. Pre-commit already runs the linters, so these
+  # ask for judgment the hooks cannot make.
+  path_instructions:
+    - path: "**"
+      instructions: |
+        This repository is public. Flag, as a blocking issue, anything in the
+        diff that should not be published:
+        - secrets, tokens, keys, passwords, session cookies, connection
+          strings, or anything that looks like one, even in tests or docs;
+        - personal data: names other than the maintainer's public handle,
+          email addresses other than a users.noreply.github.com one, phone
+          numbers, physical addresses;
+        - machine specific details: absolute home paths (/home/<user>,
+          /Users/<user>), host names, LAN or private IP addresses, internal
+          domains, cloud account IDs, ARNs, AWS profile names, cluster
+          contexts, and details of anyone's own deployment;
+        - AI attribution in any file, commit message or the pull request
+          text: a Co-Authored-By trailer naming an AI agent, a "Generated
+          with" line, an agent session link, or any other line that names
+          or links the agent that wrote the change.
+        Also check that every behavior change comes with tests that would
+        fail without it, and that the docs describe the new behavior. Do
+        not comment on formatting the pre-commit hooks already enforce.
+    - path: "**/*.md"
+      instructions: |
+        Prose does not use a hyphen, em dash or en dash as punctuation; use
+        commas, parentheses or separate sentences (hyphens inside compound
+        words, code, paths and flags are fine). Point out claims the code in
+        this pull request does not back up.
+    - path: "policy/**"
+      instructions: |
+        Every rule has a severity, and the decision follows from it (see
+        docs/POLICY.md). Anything irreversible must be severe, and anything
+        that exposes credentials, defeats a safety gate or can take over the
+        host or agent must be critical; flag a rule placed lower than that.
+        A Codex allow runs the command outside its sandbox, so flag a
+        read-only or code-running command given a Codex allow. Flag anything
+        machine specific (cluster contexts, profiles, repository paths).
+    - path: "{lib,hooks,bin}/**"
+      instructions: |
+        This code runs on every command an agent proposes. Flag any path
+        where an error, an unparsed spelling or a missing case lets a
+        command through instead of asking or refusing (it must fail
+        closed), any check that judges command text the shell would expand
+        differently, and any new check without a case in
+        tests/guard_cases.toml that shows what is still refused.
+    - path: "tools/backup.py"
+      instructions: |
+        restore runs as root on a backup folder its user can edit. Treat
+        every value in a manifest and every stored file as attacker
+        controlled: flag any read, write, chmod, chown, link or removal that
+        could follow a symlink, leave the allowed paths, or take an owner or
+        mode from the manifest.
+
+  # Pull request checks shown in the walkthrough. Warnings, not errors: the
+  # merge pipeline already gates on CodeRabbit's review through Review
+  # Verified (docs/MERGE_PIPELINE.md).
+  pre_merge_checks:
+    title:
+      mode: warning
+      requirements: >-
+        Conventional Commits: type(optional scope): imperative subject,
+        lowercase, no trailing period, at most 72 characters.
+    description:
+      mode: warning
+    custom_checks:
+      - name: Public repository hygiene
+        mode: warning
+        instructions: >-
+          Fail if the diff, commit messages or pull request text add a
+          secret or something that looks like one, an email address other
+          than a users.noreply.github.com one, an absolute home path, a host
+          name, a private IP address, a cloud account ID or ARN, or details
+          of a personal deployment. Pass otherwise.
+      - name: No AI attribution
+        mode: warning
+        instructions: >-
+          Fail if any commit message, the pull request title or description,
+          or any file in the diff contains a Co-Authored-By trailer naming an
+          AI agent, a "Generated with" line, an agent session link, or any
+          other line that names or links the AI agent that made the change.
+          Pass otherwise.
+
+# Tone of review comments and chat.
+tone_instructions: >-
+  Direct and specific: lead with the defect and a concrete fix, in plain
+  words. No praise, no emoji, no hype. Skip style points a linter already
+  reports.
+
+# The repository's own rules, read as coding guidelines for every review.
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - AGENTS.md
+      - docs/POLICY.md
+      - docs/ARCHITECTURE.md
