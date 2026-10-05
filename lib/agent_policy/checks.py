@@ -9,6 +9,7 @@ critical (deny, a hand-off to the user).
 """
 
 import os
+import re
 from dataclasses import dataclass
 
 from . import containers
@@ -165,6 +166,9 @@ def _redirects(seg, ctx):
             continue
         if target in ("/dev/null", "/dev/stdout", "/dev/stderr") or target.startswith("&"):
             continue
+        if _unresolved(target):
+            yield Finding("high", f"redirects to {target}, a path this guard cannot resolve")
+            continue
         path = containers.expand(target, ctx["cwd"], ctx["home"])
         if op in INPUT_REDIRECTS:
             cred = containers.credential_target(path, ctx["home"])
@@ -252,8 +256,37 @@ def _paths(words):
             yield word
 
 
+# Shell expansion the guard cannot evaluate: $(...), backticks, ${...} and
+# $NAME. `$HOME`, `${HOME}` and `~` at the start are expanded, so they are not
+# counted; a `$` not followed by a name (a regex anchor) is not one. A lone
+# `$` is what `$(...)` leaves once the line is split around the parentheses.
+UNRESOLVED = re.compile(r"\$\(|`|\$\{|\$[A-Za-z_]")
+# Commands whose first operand is a pattern or program, not a path.
+PATTERN_FIRST = {"grep", "egrep", "fgrep", "rg", "awk", "gawk", "sed"}
+
+
+def _unresolved(word):
+    for prefix in ("${HOME}", "$HOME"):
+        if word.startswith(prefix):
+            word = word[len(prefix) :]
+    return word == "$" or bool(UNRESOLVED.search(word))
+
+
+def _operands(seg):
+    """The path operands of a reader: _paths, minus a leading pattern or
+    program for the commands that take one (unless -e or -f supplied it)."""
+    tokens = list(_paths(seg.words[1:]))
+    supplied = any(a in ("-e", "-f", "--regexp", "--file") for a in seg.words[1:])
+    if seg.name in PATTERN_FIRST and tokens and not supplied:
+        tokens = tokens[1:]
+    return tokens
+
+
 def _reader(seg, ctx):
-    for token in _paths(seg.words[1:]):
+    for token in _operands(seg):
+        if _unresolved(token):
+            yield Finding("high", f"{seg.name} reads {token}, a path this guard cannot resolve")
+            return
         path = containers.expand(token, ctx["cwd"], ctx["home"])
         cred = containers.credential_target(path, ctx["home"])
         if cred:
@@ -278,7 +311,16 @@ def _writer(seg, ctx):
         dests = list(_paths(args)) if any(a in ("-i", "--in-place") for a in args) else []
     else:
         dests = []
+    if (
+        name == "sed"
+        and dests
+        and not any(a in ("-e", "-f", "--expression", "--file") for a in args)
+    ):
+        dests = dests[1:]  # the first operand is the script
     for token in dests:
+        if _unresolved(token):
+            yield Finding("high", f"{name} writes {token}, a path this guard cannot resolve")
+            return
         path = containers.expand(token, ctx["cwd"], ctx["home"])
         finding = _write_finding(path, ctx)
         if finding:

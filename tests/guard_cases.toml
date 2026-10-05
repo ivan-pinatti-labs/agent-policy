@@ -575,3 +575,35 @@ expect = "deny"
 [[case]]
 command = "cat ~/.local/state/other-app/log"
 expect = "none"
+
+# Paths the guard cannot resolve ask instead of passing unchecked
+[[case]]
+command = "cat $(readlink -f ./link)"
+expect = "ask"
+[[case]]
+command = "cat `echo ~/.local/state/agent-policy/backups/x/manifest.json`"
+expect = "ask"
+[[case]]
+command = "base64 \"$SECRET_FILE\""
+expect = "ask"
+[[case]]
+command = "cp notes.md \"$DEST\""
+expect = "ask"
+[[case]]
+command = "echo x > \"$OUT\""
+expect = "ask"
+[[case]]
+command = "cat \"$HOME/notes.md\""
+expect = "none"
+[[case]]
+command = "grep -E 'x$' file.txt"
+expect = "none"
+[[case]]
+command = "awk '{print $NF}' data.txt"
+expect = "none"
+[[case]]
+command = "sed -i 's/$OLD/new/' src/a.py"
+expect = "none"
+[[case]]
+command = "grep -e '$PATTERN' \"$FILE\""
+expect = "ask"
