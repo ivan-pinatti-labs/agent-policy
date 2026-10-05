@@ -172,9 +172,12 @@ write:
    command lines.
 
 A line that cannot be tokenized (unbalanced quotes) gets an `ask`, and so
-does one whose command substitutions, `bash -c` or `eval` nest more than
-four levels deep: the guard stops reading there, so it cannot vouch for
-what is below.
+does one that needs more than four levels of reading again: a script
+handed to `bash -c` or `eval` (or found in a substitution) that itself
+holds one, and so on. The guard stops reading there, so it cannot vouch
+for what is below. Nested `$(...)` does not count toward that limit: the
+guard takes each innermost `$(...)` body (and each `...` one)
+straight from the line, however deep it sits.
 
 ### Paths are judged by where they lead
 
