@@ -10,8 +10,9 @@ make test
 make install
 ```
 
-`make install` renders the policy in the test container, then copies, with
-`sudo`:
+`make install` first backs up everything it is about to touch (see
+"Backups" below); only once that backup is complete and verified does it
+render the policy in the test container and copy, with `sudo`:
 
 | What                       | Where                                                      |
 | -------------------------- | ---------------------------------------------------------- |
@@ -129,8 +130,39 @@ not retry it, rephrase it or work around it; ask the user to run it with
 make uninstall
 ```
 
-Removes everything install added. `/etc/codex/requirements.toml` is removed
-only if agent-policy wrote it.
+Backs up first, like install, then removes everything install added.
+`/etc/codex/requirements.toml` is removed only if agent-policy wrote it.
+
+## Backups
+
+`make install` and `make uninstall` both start with `make backup`, which
+copies everything they touch into a new timestamped folder under
+`~/.local/state/agent-policy/backups/` (`BACKUP_ROOT` moves it):
+
+- the Claude Code policy folder, `/etc/claude-code` (the drop-in folder and
+  any `managed-settings.json` next to it);
+- `/etc/codex`;
+- the installed scripts, `/usr/local/libexec/agent-policy`, and the
+  `agent-scratch` link;
+- each Codex `rules` folder (`~/.codex/rules`, including Codex's own
+  `default.rules`).
+
+Each copy is checked against its source, and the backup's `manifest.json`
+is written last, so a folder without one is not a backup. A path that does
+not exist is recorded as absent. If anything fails (a file it cannot read,
+a full disk), make stops there: nothing is built and nothing is installed.
+The backup itself only reads those paths; it never writes to them.
+
+```shell
+make backups                                  # list them, newest first
+make restore BACKUP=~/.local/state/agent-policy/backups/<timestamp>
+```
+
+`make restore` first prints what it would change (a dry run), then, with
+`sudo`, puts every file, symlink, mode and owner back as it was, and
+removes anything created since, including a path that was absent when the
+backup was taken. Restoring the same backup twice changes nothing the
+second time.
 
 ## Not verified yet
 

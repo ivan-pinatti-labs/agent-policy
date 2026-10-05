@@ -210,8 +210,8 @@ gh pr comment <n> --body '@coderabbitai review'
 
 ## The merge queue
 
-Branch protection on `main` requires `Pre-commit`, `SonarQube`, `Pin Only`
-and `Review Verified`, one approval, dismissal of stale reviews, approval of the
+Branch protection on `main` requires `Pre-commit`, `Tests`, `SonarQube`,
+`Pin Only` and `Review Verified`, one approval, dismissal of stale reviews, approval of the
 last push, conversation resolution and a linear history. `enforce_admins`
 is `false`, which matters for exactly one account: it lets the owner merge
 without being blocked by rules an admin can bypass, but it does not exempt

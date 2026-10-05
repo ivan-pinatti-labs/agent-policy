@@ -55,16 +55,18 @@ without being able to touch anything it did not create.
 git clone https://github.com/ivan-pinatti-labs/agent-policy.git
 cd agent-policy
 make test      # the suite, in its own container
-make install   # renders the policy and installs it for both agents (sudo)
+make install   # backs up what it touches, then installs for both agents (sudo)
 ```
 
-| You want to                                   | Run                        |
-| --------------------------------------------- | -------------------------- |
-| see the targets                               | `make`                     |
-| update this machine to the latest policy      | `git pull && make install` |
-| see what an install would change              | `make diff`                |
-| find local rules worth promoting, or deleting | `make harvest`             |
-| remove everything                             | `make uninstall`           |
+| You want to                                   | Run                         |
+| --------------------------------------------- | --------------------------- |
+| see the targets                               | `make`                      |
+| update this machine to the latest policy      | `git pull && make install`  |
+| see what an install would change              | `make diff`                 |
+| find local rules worth promoting, or deleting | `make harvest`              |
+| remove everything                             | `make uninstall`            |
+| list the automatic backups                    | `make backups`              |
+| undo an install or uninstall                  | `make restore BACKUP=<dir>` |
 
 Then, once per machine:
 
