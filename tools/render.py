@@ -37,6 +37,10 @@ SEVERITY = {
 }
 CODEX_DECISION = {"allow": "allow", "ask": "prompt", "deny": "forbidden"}
 MARKER = "# Managed by agent-policy (tools/render.py). Local edits are overwritten."
+# The scratchpad (docs/SCRATCHPAD.md): its rules' file and its folder, both left
+# out by --no-scratch, for an environment that has no scratchpad.
+SCRATCH_FILE = "70-scratch.toml"
+SCRATCH_DIR = "~/scratch"
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -64,9 +68,11 @@ class PolicyError(ValueError):
     pass
 
 
-def load(policy_dir):
+def load(policy_dir, skip=()):
     rules = []
     for path in sorted(Path(policy_dir).glob("*.toml")):
+        if path.name in skip:
+            continue
         with open(path, "rb") as handle:
             data = tomllib.load(handle)
         for index, rule in enumerate(data.get("rule", [])):
@@ -134,9 +140,10 @@ def claude_rules(rules):
     return {d: list(dict.fromkeys(v)) for d, v in perms.items()}
 
 
-def render_claude(rules, libexec):
+def render_claude(rules, libexec, scratch=True):
+    extra = {"additionalDirectories": [SCRATCH_DIR]} if scratch else {}
     return {
-        "permissions": {**claude_rules(rules), "additionalDirectories": ["~/scratch"]},
+        "permissions": {**claude_rules(rules), **extra},
         "hooks": {
             "PreToolUse": [
                 {
@@ -173,7 +180,12 @@ def load_sandbox(policy_dir):
     return cfg
 
 
-def render_sandbox(cfg):
+def render_sandbox(cfg, scratch=True):
+    excluded = list(cfg.get("excluded_commands", []))
+    allow_write = list(cfg.get("allow_write", []))
+    if not scratch:
+        excluded = [c for c in excluded if c.split()[0] != "agent-scratch"]
+        allow_write = [p for p in allow_write if p != SCRATCH_DIR]
     deny_read = [f"~/{d}" for d in containers.CREDENTIAL_DIRS]
     deny_read += [f"~/{f}" for f in containers.CREDENTIAL_FILES]
     deny_read += [f"~/{p}*/.credentials.json" for p in containers.CREDENTIAL_PREFIXES]
@@ -181,11 +193,11 @@ def render_sandbox(cfg):
         "enabled": True,
         "failIfUnavailable": bool(cfg.get("fail_if_unavailable", False)),
         "autoAllowBashIfSandboxed": bool(cfg.get("auto_allow_bash_if_sandboxed", False)),
-        "excludedCommands": list(cfg.get("excluded_commands", [])),
+        "excludedCommands": excluded,
         "filesystem": {
             "denyRead": deny_read,
             "denyWrite": [f"~/{d}" for d in containers.EXEC_DIRS],
-            "allowWrite": list(cfg.get("allow_write", [])),
+            "allowWrite": allow_write,
         },
     }
 
@@ -239,24 +251,30 @@ def main(argv=None):
     parser.add_argument("--policy", default=Path(__file__).resolve().parent.parent / "policy")
     parser.add_argument("--out", default="dist")
     parser.add_argument("--libexec", default="/usr/local/libexec/agent-policy")
+    parser.add_argument(
+        "--no-scratch",
+        action="store_true",
+        help=f"leave out the scratchpad: {SCRATCH_FILE}, its folder and its sandbox access",
+    )
     args = parser.parse_args(argv)
+    scratch = not args.no_scratch
     try:
         policy = confine(args.policy, [REPO_ROOT], "--policy")
         out = confine(args.out, [REPO_ROOT, tempfile.gettempdir()], "--out")
-        rules = load(policy)
+        rules = load(policy, skip=() if scratch else (SCRATCH_FILE,))
     except PolicyError as err:
         print(f"render: {err}", file=sys.stderr)
         return 1
     (out / "claude").mkdir(parents=True, exist_ok=True)
     (out / "codex").mkdir(parents=True, exist_ok=True)
-    claude = render_claude(rules, args.libexec)
+    claude = render_claude(rules, args.libexec, scratch)
     try:
         sandbox_cfg = load_sandbox(policy)
     except PolicyError as err:
         print(f"render: {err}", file=sys.stderr)
         return 1
     if sandbox_cfg is not None:
-        sandbox = render_sandbox(sandbox_cfg)
+        sandbox = render_sandbox(sandbox_cfg, scratch)
         trial = {"sandbox": sandbox}
         (out / "claude" / "sandbox-trial.json").write_text(json.dumps(trial, indent=2) + "\n")
         if sandbox_cfg.get("install"):

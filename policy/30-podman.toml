@@ -45,7 +45,6 @@ prefix = [
                           "run", "exec", "create"]],
   ["podman-compose", ["up", "build", "pull", "start", "restart", "stop",
                       "run", "exec", "create"]],
-  ["agent-scratch"],
 ]
 
 [[rule]]
@@ -60,13 +59,14 @@ prefix = [
   ["podman", "container", ["rm", "kill", "pause", "unpause", "rename",
                             "commit", "export", "mount", "update", "prune",
                             "cleanup", "clone", "checkpoint", "restore",
-                            "runlabel"]],
+                            "runlabel", "init"]],
   ["podman", "image", ["rm", "prune", "load", "import", "save", "push",
                         "mount", "scp", "sign", "trust", "untag"]],
   ["podman", "network", ["rm", "prune", "connect", "disconnect", "reload", "update"]],
   ["podman", "volume", ["rm", "prune", "import", "export", "mount", "reload"]],
   ["podman", "system", ["prune", "migrate", "renumber", "service", "connection"]],
-  ["podman", "pod", ["rm", "kill", "stop", "prune", "create", "start", "restart"]],
+  ["podman", "pod", ["rm", "kill", "stop", "prune", "create", "start", "restart",
+                      "clone", "pause", "unpause"]],
   ["podman", "secret", ["create", "rm"]],
   ["podman", "manifest", ["push", "rm", "create", "add", "annotate"]],
   ["podman", "compose", ["down", "rm", "kill", "pause"]],

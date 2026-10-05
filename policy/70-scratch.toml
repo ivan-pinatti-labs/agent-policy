@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The agent scratchpad (bin/agent-scratch, docs/SCRATCHPAD.md): its folder and
+# the command that cleans up after it. Kept in a file of its own so an
+# environment without the scratchpad renders without it: `tools/render.py
+# --no-scratch` skips this file, and with it the extra folder Claude Code is
+# given and the sandbox's write access to it.
+
+[[rule]]
+severity = "low"
+agents = ["claude"]
+reason = "The agent scratchpad folder (see bin/agent-scratch)"
+claude = [
+  "Edit(~/scratch/**)",
+  "Write(~/scratch/**)",
+  "Read(~/scratch/**)",
+]
+
+[[rule]]
+severity = "low"
+reason = "The agent scratchpad's own command, which only removes what it created"
+prefix = [["agent-scratch"]]

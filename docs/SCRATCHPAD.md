@@ -19,6 +19,13 @@ sessions do not collide.
 
 Claude Code may also read and edit `~/scratch/**` without asking.
 
+Its rules live in `policy/70-scratch.toml`. An environment without the
+scratchpad (a devcontainer-airlock workbench, say, where agents run
+containers through its own L2 engine) renders the policy with
+`tools/render.py --no-scratch`, which leaves out that file, the extra folder
+Claude Code is given, and the sandbox's write access to `~/scratch` and
+exclusion of `agent-scratch`.
+
 ## Commands
 
 ```text

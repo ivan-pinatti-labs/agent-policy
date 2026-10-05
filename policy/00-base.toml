@@ -96,21 +96,17 @@ claude = [
 ]
 
 [[rule]]
-severity = "low"
-agents = ["claude"]
-reason = "The agent scratchpad folder (see bin/agent-scratch)"
-claude = [
-  "Edit(~/scratch/**)",
-  "Write(~/scratch/**)",
-  "Read(~/scratch/**)",
-]
-
-[[rule]]
 severity = "critical"
 agents = ["claude"]
-reason = "Agent credentials"
+reason = "Agent credentials: read with Claude Code's own file tools, or written over"
 claude = [
   "Read(~/.claude*/.credentials.json)",
   "Read(~/.codex/auth.json)",
   "Read(~/.ssh/id_*)",
+  "Edit(~/.claude*/.credentials.json)",
+  "Edit(~/.codex/auth.json)",
+  "Edit(~/.ssh/id_*)",
+  "Write(~/.claude*/.credentials.json)",
+  "Write(~/.codex/auth.json)",
+  "Write(~/.ssh/id_*)",
 ]
