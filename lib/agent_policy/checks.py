@@ -240,8 +240,6 @@ def _mount(seg, ctx):
             yield Finding("critical", f"{name} mounts over {runs}")
         elif any(containers.under(path, root) for root in ctx["protected"]):
             yield Finding("severe", f"{name} acts inside a protected deployment")
-        elif name != "umount" and (path == home or containers.under(home, path)):
-            yield Finding("severe", f"{name} mounts over the home folder or a parent of it")
 
 
 # Reading and writing files
@@ -407,10 +405,8 @@ def _writer(seg, ctx):
             for a in args
         )
         dests = _program_operands("sed", args) if in_place else []
-    elif name in ("yq", "jq"):
+    else:  # yq, jq
         dests = list(_paths(args)) if any(a in ("-i", "--in-place") for a in args) else []
-    else:
-        dests = []
     for token in dests:
         if _unresolved(token):
             yield Finding("high", f"{name} writes {token}, a path this guard cannot resolve")

@@ -212,3 +212,14 @@ host:
   free of home paths.
 - `tests/test_scratch.py`: `agent-scratch` against a fake `podman` that
   records every call.
+- `tests/test_guard_edges.py` and `tests/test_tools_edges.py`: the paths a
+  command line alone cannot reach, such as an engine that fails, a hook
+  payload of the wrong shape, a tampered backup manifest or an invalid
+  policy file.
+
+`make coverage` runs the same suite under coverage.py, measuring the guard
+and `agent-scratch` in the subprocesses the tests start, and fails below
+100% of lines and branches. The SonarQube workflow runs it on every pull
+request, so an uncovered line fails a required check. Code no test can
+reach is removed rather than excluded; the only exclusion is the
+`if __name__ == "__main__":` line of each script.

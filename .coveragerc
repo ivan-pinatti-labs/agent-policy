@@ -16,3 +16,12 @@ source =
     /work/hooks
     /work/bin
     /work/tools
+
+[report]
+# Every line and branch is covered, and the suite fails otherwise. Code a
+# test cannot reach is removed, not excluded.
+fail_under = 100
+# The script entry points: tests import these modules or run them as
+# subprocesses, and the line only hands over to main().
+exclude_also =
+    if __name__ == .__main__.:

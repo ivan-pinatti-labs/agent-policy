@@ -230,7 +230,11 @@ def checked_manifest(manifest, allow):
     return roots, entries
 
 
-def restore(dest, allow, dry_run=False, log=print, backup_root=None):
+def running_as_root():
+    return os.geteuid() == 0
+
+
+def restore(dest, allow, dry_run=False, log=print, backup_root=None, as_root=None):
     """Return the list of actions; perform them unless dry_run."""
     manifest = load(dest, backup_root)
     roots, entries = checked_manifest(manifest, allow)
@@ -250,7 +254,7 @@ def restore(dest, allow, dry_run=False, log=print, backup_root=None):
                 actions.append(("remove", str(path)))
                 if not dry_run:
                     remove_at(path)
-    as_root = hasattr(os, "geteuid") and os.geteuid() == 0
+    as_root = running_as_root() if as_root is None else as_root
     for entry in entries:
         path = entry["path"]
         kind = entry["type"]
@@ -293,7 +297,7 @@ def same(current, entry):
 DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
 
-def open_dir(path, create=False):
+def open_dir(path, create=False, as_root=False):
     """A descriptor for the folder `path`, walked from / without following
     symlinks; missing folders are made (0o755) when `create`."""
     fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
@@ -306,7 +310,7 @@ def open_dir(path, create=False):
                     raise
                 os.mkdir(part, 0o755, dir_fd=fd)
                 child = os.open(part, DIR_FLAGS, dir_fd=fd)
-                if hasattr(os, "geteuid") and os.geteuid() == 0:
+                if as_root:
                     # As everything restore makes: the owner of its parent.
                     owner = os.fstat(fd)
                     os.fchown(child, owner.st_uid, owner.st_gid)
@@ -334,7 +338,7 @@ def remove_at(path):
 
 def restore_at(path, entry, data, as_root, roots=()):
     """Make `path` match `entry` through descriptors only."""
-    parent = open_dir(Path(path).parent, create=True)
+    parent = open_dir(Path(path).parent, create=True, as_root=as_root)
     name = Path(path).name
     kind = entry["type"]
     try:

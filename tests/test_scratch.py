@@ -202,5 +202,86 @@ class Scratch(unittest.TestCase):
                 self.assertEqual(2, self.scratch("dir", slug).returncode)
 
 
+class ScratchCommands(Scratch):
+    """The verbs and refusals the main tests do not reach."""
+
+    def test_help_and_no_arguments(self):
+        self.assertEqual(0, self.scratch("--help").returncode)
+        self.assertEqual(2, self.scratch().returncode)
+
+    def test_dir_creates_and_prints_the_folder(self):
+        proc = self.scratch("dir", "demo")
+        folder = self.home / "scratch" / "as-demo"
+        self.assertEqual(0, proc.returncode)
+        self.assertEqual(str(folder), proc.stdout.strip())
+        self.assertTrue(folder.is_dir())
+
+    def test_ls_with_and_without_a_slug(self):
+        (self.state / "list" / "ps").write_text("as-demo-web\n")
+        (self.home / "scratch" / "as-demo").mkdir(parents=True)
+        (self.home / "scratch" / "unrelated").mkdir()
+        everything = self.scratch("ls")
+        self.assertEqual(0, everything.returncode)
+        self.assertIn("folders: as-demo", everything.stdout)
+        self.assertIn("as-demo-web", self.scratch("ls", "demo").stdout)
+
+    def test_ls_without_a_scratch_folder(self):
+        proc = self.scratch("ls", "demo")
+        self.assertEqual(0, proc.returncode)
+        self.assertNotIn("folders:", proc.stdout)
+
+    def test_unknown_or_incomplete_verbs(self):
+        for args in (("launch", "demo"), ("exec", "demo", "web"), ("volume", "demo")):
+            with self.subTest(args=args):
+                self.assertEqual(2, self.scratch(*args).returncode)
+
+    def test_an_invalid_name_is_refused(self):
+        self.assertEqual(2, self.scratch("rm", "demo", "bad name").returncode)
+
+    def test_default_networks_need_no_label(self):
+        proc = self.scratch("run", "demo", "--network", "none", "debian:13-slim")
+        self.assertEqual(0, proc.returncode, proc.stderr)
+
+    def test_rm_a_network_it_owns(self):
+        self.own("network", "as-demo-net", "demo")
+        self.assertEqual(0, self.scratch("rm", "demo", "net").returncode)
+        self.assertEqual(["network", "rm", "as-demo-net"], self.engine_calls()[-1])
+
+    def test_an_existing_volume_with_the_label_is_used_as_is(self):
+        self.own("volume", "as-demo-data", "demo")
+        proc = self.scratch("run", "demo", "-v", "as-demo-data:/d", "debian:13-slim")
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        self.assertNotIn("create", [c[1] for c in self.engine_calls() if len(c) > 1])
+
+    def test_a_volume_that_cannot_be_created(self):
+        self.env["STUB_FAIL"] = "volume create"
+        proc = self.scratch("run", "demo", "-v", "as-demo-new:/d", "debian:13-slim")
+        self.assertEqual(2, proc.returncode)
+        self.assertIn("could not create", proc.stderr)
+
+    def test_purge_removes_volumes_and_tolerates_a_missing_folder(self):
+        (self.state / "list" / "volume").write_text("as-demo-data\n")
+        self.assertEqual(0, self.scratch("purge", "demo").returncode)
+        self.assertIn(["volume", "rm", "as-demo-data"], self.engine_calls())
+
+    def test_the_project_is_the_git_top_level(self):
+        subprocess.run(["git", "init", "-q", str(self.project)], check=True)
+        (self.project / "sub").mkdir()
+        proc = subprocess.run(
+            [sys.executable, str(SCRATCH), "run", "demo", "-v", f"{self.project}:/p", "img"],
+            cwd=self.project / "sub",
+            env=self.env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, proc.returncode, proc.stderr)
+
+    def test_without_git_the_project_is_the_working_folder(self):
+        self.env["PATH"] = str(ROOT / "tests" / "stubs")
+        proc = self.scratch("run", "demo", "-v", f"{self.project}:/p", "img")
+        self.assertEqual(0, proc.returncode, proc.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
