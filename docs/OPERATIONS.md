@@ -172,8 +172,12 @@ folder it is restored into, never one named in the manifest. It opens
 every folder from `/` without following a symlink and writes through those
 handles, so a symlink anywhere on the way makes it stop rather than follow
 (on a system where `/home` itself is a symlink, restore the home folder's
-paths by hand). It does put back whatever content the backup holds, so read
-the dry run first.
+paths by hand). A symlink is put back only if it points inside those same
+paths: a link in the policy folder to a file you own would make that file
+root-managed policy, and a link at `agent-scratch` to your own script would
+run it with no prompt. A backup holding a link that points elsewhere is
+refused, naming the link, so you can put that one back by hand. It does
+put back whatever content the backup holds, so read the dry run first.
 
 ## Not verified yet
 

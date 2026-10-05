@@ -209,6 +209,14 @@ def checked_manifest(manifest, allow):
         if not any(path == root or path.is_relative_to(root) for root in roots):
             raise BackupError(f"{entry['path']} is outside the paths this backup may touch")
         entry = dict(entry, path=str(path))
+        if entry["type"] == "symlink":
+            # A link restored as root must not point outside the allowed
+            # paths: a link in the policy folder to a user's file would make
+            # that file root-managed policy.
+            target = Path(os.path.normpath(path.parent / entry["target"]))
+            if not any(target == root or target.is_relative_to(root) for root in roots):
+                raise BackupError(f"the link {path} points outside the allowed paths")
+            entry["target"] = str(target) if os.path.isabs(entry["target"]) else entry["target"]
         if entry["type"] not in ("file", "dir", "symlink", "absent"):
             raise BackupError(f"unknown entry type for {entry['path']}")
         entries.append(entry)

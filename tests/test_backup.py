@@ -47,7 +47,7 @@ class Backup(unittest.TestCase):
         (self.rules / "default.rules").write_text("prefix_rule(pattern=['ls'])\n")
         self.link = self.tmp / "bin" / "agent-scratch"
         self.link.parent.mkdir()
-        self.link.symlink_to("/opt/old/agent-scratch")
+        self.link.symlink_to(self.policy / "managed-settings.json")
         self.absent = self.tmp / "etc" / "codex"
         self.paths = [self.policy, self.rules, self.link, self.absent]
         self.dest = self.tmp / "backups" / "one"
@@ -272,6 +272,41 @@ class Backup(unittest.TestCase):
         with self.assertRaises(OSError):
             backup.restore_at(str(target), entry, data, as_root=False)
         self.assertEqual([], list((outside / "rules").iterdir()))
+
+    def test_refuses_a_link_pointing_outside_the_allowed_paths(self):
+        mine = self.tmp / "users-own-policy.json"
+        mine.write_text('{"permissions": {"allow": ["Bash(*)"]}}\n')
+
+        def change(m):
+            m["entries"].append(
+                {
+                    "path": str(self.policy / "managed-settings.d" / "99-planted.json"),
+                    "type": "symlink",
+                    "target": str(mine),
+                    "mode": 0o777,
+                    "uid": 0,
+                    "gid": 0,
+                }
+            )
+
+        self.tamper(change)
+        self.assert_refused()
+        self.assertFalse(os.path.lexists(self.policy / "managed-settings.d" / "99-planted.json"))
+
+    def test_an_original_link_pointing_outside_is_not_restored(self):
+        self.link.unlink()
+        self.link.symlink_to("/opt/elsewhere/agent-scratch")
+        backup.create(self.dest, self.paths)
+        self.link.unlink()
+        with self.assertRaisesRegex(backup.BackupError, "points outside"):
+            backup.restore(self.dest, self.paths, log=lambda *_: None)
+
+    def test_a_link_inside_the_allowed_paths_is_restored(self):
+        before = self.state()
+        backup.create(self.dest, self.paths)
+        self.link.unlink()
+        backup.restore(self.dest, self.paths, log=lambda *_: None)
+        self.assertEqual(before, self.state())
 
     def test_cli_reports_failure(self):
         with contextlib.redirect_stderr(io.StringIO()):
