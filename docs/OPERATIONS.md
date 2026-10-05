@@ -166,18 +166,20 @@ was taken. Restoring the same backup twice changes nothing the second time.
 Restore runs as root on a folder you own, so it trusts the backup only as
 far as it has to. It touches only the paths make passes it; it reads each
 stored copy without following a symlink and only if its hash matches the
-manifest; it writes without following a symlink; it never restores a
-setuid, setgid or sticky bit; and a restored path takes the owner of the
-folder it is restored into, never one named in the manifest. It opens
-every folder from `/` without following a symlink and writes through those
-handles, so a symlink anywhere on the way makes it stop rather than follow
-(on a system where `/home` itself is a symlink, restore the home folder's
-paths by hand). A symlink is put back only if it points inside those same
-paths: a link in the policy folder to a file you own would make that file
-root-managed policy, and a link at `agent-scratch` to your own script would
-run it with no prompt. A backup holding a link that points elsewhere is
-refused, naming the link, so you can put that one back by hand. It does
-put back whatever content the backup holds, so read the dry run first.
+manifest; it writes without following a symlink; it never restores a setuid,
+setgid or sticky bit; and a restored path takes the owner of the folder it
+is restored into, never one named in the manifest. It opens every folder
+from `/` without following a symlink and writes through those handles, so a
+symlink anywhere on the way makes it stop rather than follow (on a system
+where `/home` itself is a symlink, restore the home folder's paths by hand).
+Folders it has to re-create take the owner of the folder they are made in. A
+symlink is put back only if it points inside those same paths, and always as
+that absolute, normalized target: a link in the policy folder to a file you
+own would make that file root-managed policy, and a link at `agent-scratch`
+to your own script would run it with no prompt. A backup holding a link that
+points elsewhere is refused, naming the link, so you can put that one back
+by hand. It does put back whatever content the backup holds, so read the dry
+run first.
 
 ## Not verified yet
 

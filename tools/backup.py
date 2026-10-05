@@ -216,7 +216,10 @@ def checked_manifest(manifest, allow):
             target = Path(os.path.normpath(path.parent / entry["target"]))
             if not any(target == root or target.is_relative_to(root) for root in roots):
                 raise BackupError(f"the link {path} points outside the allowed paths")
-            entry["target"] = str(target) if os.path.isabs(entry["target"]) else entry["target"]
+            # Restored as the absolute path just checked, never as written: a
+            # relative target with `..` after a link component would resolve
+            # somewhere else than its text says.
+            entry["target"] = str(target)
         if entry["type"] not in ("file", "dir", "symlink", "absent"):
             raise BackupError(f"unknown entry type for {entry['path']}")
         entries.append(entry)
@@ -269,7 +272,11 @@ def same(current, entry):
     from the manifest)."""
     if current.get("type") != entry.get("type"):
         return False
-    if current.get("target") != entry.get("target") or current.get("sha256") != entry.get("sha256"):
+    if entry["type"] == "symlink":
+        # Compared as restore writes it: absolute and normalized.
+        parent = Path(current["path"]).parent
+        return os.path.normpath(parent / current["target"]) == entry["target"]
+    if current.get("sha256") != entry.get("sha256"):
         return False
     return entry["type"] == "symlink" or current.get("mode") == entry.get("mode", 0) & 0o777
 
@@ -295,6 +302,10 @@ def open_dir(path, create=False):
                     raise
                 os.mkdir(part, 0o755, dir_fd=fd)
                 child = os.open(part, DIR_FLAGS, dir_fd=fd)
+                if hasattr(os, "geteuid") and os.geteuid() == 0:
+                    # As everything restore makes: the owner of its parent.
+                    owner = os.fstat(fd)
+                    os.fchown(child, owner.st_uid, owner.st_gid)
             os.close(fd)
             fd = child
     except BaseException:

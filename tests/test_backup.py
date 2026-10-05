@@ -308,6 +308,49 @@ class Backup(unittest.TestCase):
         backup.restore(self.dest, self.paths, log=lambda *_: None)
         self.assertEqual(before, self.state())
 
+    def test_a_link_chain_cannot_escape_through_dot_dot(self):
+        def change(m):
+            deep = self.policy / "deep"
+            m["entries"] += [
+                {"path": str(deep), "type": "dir", "mode": 0o755, "uid": 0, "gid": 0},
+                {
+                    "path": str(deep / "a"),
+                    "type": "symlink",
+                    "target": "..",
+                    "mode": 0o777,
+                    "uid": 0,
+                    "gid": 0,
+                },
+                {
+                    "path": str(deep / "link"),
+                    "type": "symlink",
+                    "target": "a/../../" + str(self.tmp.relative_to("/")) + "/payload",
+                    "mode": 0o777,
+                    "uid": 0,
+                    "gid": 0,
+                },
+            ]
+
+        self.tamper(change)
+        try:
+            backup.restore(self.dest, self.paths, log=lambda *_: None)
+        except backup.BackupError:
+            return  # refused outright: fine
+        # Restored, then only as the checked absolute path inside the root.
+        for name in ("a", "link"):
+            target = os.readlink(self.policy / "deep" / name)
+            self.assertTrue(os.path.isabs(target), target)
+            self.assertTrue(Path(target).is_relative_to(self.policy), target)
+
+    def test_an_unchanged_relative_link_is_left_alone(self):
+        self.link.unlink()
+        self.link.symlink_to(
+            os.path.relpath(self.policy / "managed-settings.json", self.link.parent)
+        )
+        backup.create(self.dest, self.paths)
+        actions = backup.restore(self.dest, self.paths, log=lambda *_: None)
+        self.assertNotIn(("restore", str(self.link)), actions)
+
     def test_cli_reports_failure(self):
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(
