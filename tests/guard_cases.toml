@@ -607,3 +607,47 @@ expect = "none"
 [[case]]
 command = "grep -e '$PATTERN' \"$FILE\""
 expect = "ask"
+
+# Review: $HOME boundary, grep/sed option parsing, checking every operand
+[[case]]
+command = "cat $HOMEX/config"
+expect = "ask"
+[[case]]
+command = "cat $HOME/.ssh/config"
+expect = "deny"
+[[case]]
+command = "grep -e. ~/.ssh/id_rsa"
+expect = "deny"
+[[case]]
+command = "grep -ie secret ~/.aws/credentials"
+expect = "deny"
+[[case]]
+command = "grep --regexp=x ~/.netrc"
+expect = "deny"
+[[case]]
+command = "grep -f ~/.ssh/id_rsa notes.txt"
+expect = "deny"
+[[case]]
+command = "rg -g '*.py' token ~/.config/gh"
+expect = "deny"
+[[case]]
+command = "sed -i -e's/foo/bar/' ~/.bashrc"
+expect = "deny"
+[[case]]
+command = "sed -i -e 's/foo/bar/' ~/.bashrc"
+expect = "deny"
+[[case]]
+command = "sed -i.bak 's/foo/bar/' ~/.zshrc"
+expect = "deny"
+[[case]]
+command = "sed -i -e 's/a/b/' src/main.py"
+expect = "none"
+[[case]]
+command = "cat \"$FILE\" ~/.ssh/id_ed25519"
+expect = "deny"
+[[case]]
+command = "cp \"$SRC\" ~/.bashrc"
+expect = "deny"
+[[case]]
+command = "grep -n pattern src/a.py src/b.py"
+expect = "none"

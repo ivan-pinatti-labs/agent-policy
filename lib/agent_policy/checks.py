@@ -266,32 +266,128 @@ PATTERN_FIRST = {"grep", "egrep", "fgrep", "rg", "awk", "gawk", "sed"}
 
 
 def _unresolved(word):
-    for prefix in ("${HOME}", "$HOME"):
-        if word.startswith(prefix):
-            word = word[len(prefix) :]
+    word = word[containers.home_prefix(word) :]
     return word == "$" or bool(UNRESOLVED.search(word))
 
 
+# How the commands whose first operand is a pattern or program take their
+# options: which short letters and long names supply that pattern (so the
+# first operand is a file after all), which name a file to read, and which
+# take a value that is neither.
+PROGRAM_OPTIONS = {
+    "grep": (
+        "e",
+        "f",
+        "mABCdD",
+        ("--regexp",),
+        ("--file",),
+        (
+            "--max-count",
+            "--after-context",
+            "--before-context",
+            "--context",
+            "--label",
+            "--include",
+            "--exclude",
+            "--exclude-dir",
+            "--devices",
+            "--directories",
+        ),
+    ),
+    "rg": (
+        "e",
+        "f",
+        "mABCgtTMjEr",
+        ("--regexp",),
+        ("--file",),
+        (
+            "--max-count",
+            "--after-context",
+            "--before-context",
+            "--context",
+            "--glob",
+            "--iglob",
+            "--type",
+            "--type-not",
+            "--max-columns",
+            "--threads",
+            "--encoding",
+            "--replace",
+            "--max-depth",
+            "--max-filesize",
+        ),
+    ),
+    "sed": ("e", "f", "l", ("--expression",), ("--file",), ("--line-length",)),
+    "awk": ("e", "f", "vF", ("--source",), ("--file",), ("--assign", "--field-separator")),
+}
+PROGRAM_OPTIONS["egrep"] = PROGRAM_OPTIONS["fgrep"] = PROGRAM_OPTIONS["grep"]
+PROGRAM_OPTIONS["gawk"] = PROGRAM_OPTIONS["awk"]
+
+
+def _program_operands(name, args):
+    """The file operands of grep, rg, sed or awk: files named by -f, then the
+    positional operands without the leading pattern or program, unless an
+    option supplied it. Attached (-ePAT, -fFILE, --file=FILE), separate and
+    clustered (-ie PAT) forms are all read."""
+    pattern, file_, valued, long_pattern, long_file, long_valued = PROGRAM_OPTIONS[name]
+    files, positional, supplied, i, done = [], [], False, 0, False
+    while i < len(args):
+        arg = args[i]
+        nxt = args[i + 1] if i + 1 < len(args) else None
+        if done or arg == "-" or not arg.startswith("-"):
+            positional.append(arg)
+        elif arg == "--":
+            done = True
+        elif arg.startswith("--"):
+            opt, eq, value = arg.partition("=")
+            if opt in long_pattern or opt in long_file or opt in long_valued:
+                if not eq:
+                    value, i = nxt, i + 1
+                if opt in long_pattern:
+                    supplied = True
+                elif opt in long_file:
+                    supplied = True
+                    if value is not None:
+                        files.append(value)
+        else:
+            for j, letter in enumerate(arg[1:], start=1):
+                if name == "sed" and letter == "i":
+                    break  # -i[SUFFIX]: the rest is the suffix
+                if letter in pattern or letter in file_ or letter in valued:
+                    value = arg[j + 1 :] or nxt
+                    if not arg[j + 1 :]:
+                        i += 1
+                    if letter in pattern:
+                        supplied = True
+                    elif letter in file_:
+                        supplied = True
+                        if value is not None:
+                            files.append(value)
+                    break
+        i += 1
+    if not supplied and positional:
+        positional = positional[1:]
+    return files + positional
+
+
 def _operands(seg):
-    """The path operands of a reader: _paths, minus a leading pattern or
-    program for the commands that take one (unless -e or -f supplied it)."""
-    tokens = list(_paths(seg.words[1:]))
-    supplied = any(a in ("-e", "-f", "--regexp", "--file") for a in seg.words[1:])
-    if seg.name in PATTERN_FIRST and tokens and not supplied:
-        tokens = tokens[1:]
-    return tokens
+    """The path operands of a reader."""
+    if seg.name in PROGRAM_OPTIONS:
+        return _program_operands(seg.name, seg.words[1:])
+    return list(_paths(seg.words[1:]))
 
 
 def _reader(seg, ctx):
+    # Every operand is checked: an unresolvable one asks, and a credential
+    # path after it still earns its own (stricter) finding.
     for token in _operands(seg):
         if _unresolved(token):
             yield Finding("high", f"{seg.name} reads {token}, a path this guard cannot resolve")
-            return
+            continue
         path = containers.expand(token, ctx["cwd"], ctx["home"])
         cred = containers.credential_target(path, ctx["home"])
         if cred:
             yield Finding("critical", f"{seg.name} reads {cred}, which holds credentials")
-            return
 
 
 def _writer(seg, ctx):
@@ -304,28 +400,25 @@ def _writer(seg, ctx):
     elif name == "dd":
         dests = [a.split("=", 1)[1] for a in args if a.startswith("of=")]
     elif name == "sed":
-        dests = (
-            list(_paths(args)) if any(a.startswith("-i") or a == "--in-place" for a in args) else []
+        in_place = any(
+            a == "--in-place"
+            or a.startswith("--in-place=")
+            or (a.startswith("-") and not a.startswith("--") and "i" in a[1:])
+            for a in args
         )
+        dests = _program_operands("sed", args) if in_place else []
     elif name in ("yq", "jq"):
         dests = list(_paths(args)) if any(a in ("-i", "--in-place") for a in args) else []
     else:
         dests = []
-    if (
-        name == "sed"
-        and dests
-        and not any(a in ("-e", "-f", "--expression", "--file") for a in args)
-    ):
-        dests = dests[1:]  # the first operand is the script
     for token in dests:
         if _unresolved(token):
             yield Finding("high", f"{name} writes {token}, a path this guard cannot resolve")
-            return
+            continue
         path = containers.expand(token, ctx["cwd"], ctx["home"])
         finding = _write_finding(path, ctx)
         if finding:
             yield finding
-            return
 
 
 def _write_finding(path, ctx):

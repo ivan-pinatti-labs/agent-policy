@@ -85,10 +85,20 @@ def under(path, root):
     return path == root or path.startswith(root.rstrip("/") + "/")
 
 
+def home_prefix(path):
+    """The length of a leading `${HOME}` or `$HOME` (only at a name boundary:
+    `$HOMEX` is another variable), or 0."""
+    if path.startswith("${HOME}"):
+        return len("${HOME}")
+    if path.startswith("$HOME") and (len(path) == 5 or not (path[5].isalnum() or path[5] == "_")):
+        return len("$HOME")
+    return 0
+
+
 def expand(path, cwd, home):
-    for var in ("${HOME}", "$HOME"):
-        if path.startswith(var):
-            path = home + path[len(var) :]
+    prefix = home_prefix(path)
+    if prefix:
+        path = home + path[prefix:]
     if path == "~" or path.startswith("~/"):
         path = home + path[1:]
     if not os.path.isabs(path):
@@ -147,7 +157,7 @@ def exec_target(path, cwd, home):
 
 
 def is_host_path(source):
-    return source.startswith(("/", "~", ".", "$HOME", "${HOME}"))
+    return source.startswith(("/", "~", ".")) or bool(home_prefix(source))
 
 
 def mount_finding(source, cwd, home, protected):
