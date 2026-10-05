@@ -561,3 +561,17 @@ expect = "none"
 [[case]]
 command = "echo 2 > notes.txt"
 expect = "none"
+
+# agent-policy's own backups hold byte-for-byte copies of policy files
+[[case]]
+command = "cat ~/.local/state/agent-policy/backups/20261005T000000Z/manifest.json"
+expect = "deny"
+[[case]]
+command = "cp -r ~/.local/state/agent-policy ./loot"
+expect = "deny"
+[[case]]
+command = "podman run --rm -v ~/.local/state/agent-policy:/b alpine true"
+expect = "deny"
+[[case]]
+command = "cat ~/.local/state/other-app/log"
+expect = "none"

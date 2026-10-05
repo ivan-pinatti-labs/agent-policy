@@ -99,6 +99,12 @@ class Backup(unittest.TestCase):
         self.assertEqual("absent", kinds["codex"])
         self.assertEqual(0o700, os.stat(self.dest).st_mode & 0o777)
 
+    def test_copies_and_manifest_are_owner_only(self):
+        backup.create(self.dest, self.paths)
+        self.assertEqual(0o600, os.stat(self.dest / backup.MANIFEST).st_mode & 0o777)
+        copy = backup.stored(self.dest, self.policy / "managed-settings.json")
+        self.assertEqual(0o600, os.stat(copy).st_mode & 0o777)
+
     def test_backup_never_writes_to_the_paths_it_saves(self):
         before = self.state()
         backup.create(self.dest, self.paths)

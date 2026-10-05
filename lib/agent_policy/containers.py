@@ -25,6 +25,9 @@ CREDENTIAL_DIRS = [
     ".config/gh",
     ".config/gcloud",
     ".kube",
+    # agent-policy's own backups (make backup): byte-for-byte copies of the
+    # policy folders, which can carry a token someone put in a settings file.
+    ".local/state/agent-policy",
 ]
 # Top-level names matched by prefix: Claude Code keeps its login under
 # ~/.claude, and a second profile usually sits next to it under a similar
