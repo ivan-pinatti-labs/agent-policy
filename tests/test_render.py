@@ -41,6 +41,46 @@ class Render(unittest.TestCase):
         self.assertIn("Bash(*git*push*--force*)", perms["deny"])
         self.assertNotIn("Bash(env *)", perms["allow"])
 
+    def test_agent_logins_cannot_be_read_or_written_by_file_tools(self):
+        deny = self.claude["permissions"]["deny"]
+        for tool in ("Read", "Edit", "Write"):
+            for path in ("~/.claude*/.credentials.json", "~/.codex/auth.json", "~/.ssh/id_*"):
+                self.assertIn(f"{tool}({path})", deny)
+
+    def test_unlisted_podman_subcommands_now_ask(self):
+        ask = self.claude["permissions"]["ask"]
+        for words in (
+            "podman container init",
+            "podman pod clone",
+            "podman pod pause",
+            "podman pod unpause",
+        ):
+            self.assertIn(f"Bash({words} *)", ask)
+
+    def test_the_scratchpad_by_default(self):
+        perms = self.claude["permissions"]
+        self.assertEqual(["~/scratch"], perms["additionalDirectories"])
+        self.assertIn("Write(~/scratch/**)", perms["allow"])
+        self.assertIn("Bash(agent-scratch *)", perms["allow"])
+        self.assertIn("agent-scratch", self.rules_file.read_text())
+
+    def test_no_scratch_leaves_the_scratchpad_out(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            self.assertEqual(0, render.main(["--out", tmp, "--no-scratch"]))
+            claude = json.loads((Path(tmp) / "claude" / "50-agent-policy.json").read_text())
+            trial = json.loads((Path(tmp) / "claude" / "sandbox-trial.json").read_text())
+            text = json.dumps(claude) + json.dumps(trial)
+            text += (Path(tmp) / "codex" / "agent-policy.rules").read_text()
+            self.assertNotIn("scratch", text)
+            self.assertNotIn("additionalDirectories", claude["permissions"])
+            # Everything else is still there.
+            self.assertIn("Bash(git push *)", claude["permissions"]["allow"])
+            self.assertIn("git *", trial["sandbox"]["excludedCommands"])
+            self.assertIn("~/.ssh", trial["sandbox"]["filesystem"]["denyRead"])
+        finally:
+            shutil.rmtree(tmp)
+
     def test_claude_hook(self):
         hook = self.claude["hooks"]["PreToolUse"][0]
         self.assertEqual("Bash", hook["matcher"])
