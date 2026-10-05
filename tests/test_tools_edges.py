@@ -6,6 +6,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -71,7 +72,19 @@ class BackupEdges(unittest.TestCase):
         backup.create(self.dest, [self.root])
         before = sorted(str(p) for p in backup.walk(self.root))
         shutil.rmtree(self.tmp / "etc")
-        backup.restore(self.dest, [self.root], as_root=True, **self.quiet)
+        owners_set = []
+        real_fchown = os.fchown
+
+        def spy(fd, uid, gid):
+            st = os.fstat(fd)
+            owners_set.append(((st.st_dev, st.st_ino), uid, gid))
+            real_fchown(fd, uid, gid)
+
+        with mock.patch.object(backup.os, "fchown", spy):
+            backup.restore(self.dest, [self.root], as_root=True, **self.quiet)
+        # The re-created etc/ takes the owner of the folder above it.
+        parent, made = os.stat(self.tmp), os.stat(self.tmp / "etc")
+        self.assertIn(((made.st_dev, made.st_ino), parent.st_uid, parent.st_gid), owners_set)
         self.assertEqual(before, sorted(str(p) for p in backup.walk(self.root)))
         self.assertTrue((self.root / "link").is_symlink())
 
@@ -127,6 +140,23 @@ class BackupEdges(unittest.TestCase):
         backup.create(self.dest, [self.root])
         (self.dest.parent / "incomplete").mkdir()
         self.assertEqual([self.dest], [p for p, _ in backup.list_backups(self.dest.parent)])
+
+
+class EntryPoints(unittest.TestCase):
+    """Each tool run as a script hands main()'s status to the shell."""
+
+    def run_tool(self, *args):
+        return subprocess.run(
+            [sys.executable, *args], capture_output=True, text=True, check=False
+        ).returncode
+
+    def test_status_reaches_the_shell(self):
+        with tempfile.TemporaryDirectory() as out:
+            self.assertEqual(0, self.run_tool(str(ROOT / "tools" / "render.py"), "--out", out))
+        self.assertEqual(
+            1, self.run_tool(str(ROOT / "tools" / "backup.py"), "list", "/nonexistent")
+        )
+        self.assertEqual(1, self.run_tool(str(ROOT / "tools" / "harvest.py"), "/nonexistent"))
 
 
 class RenderEdges(unittest.TestCase):

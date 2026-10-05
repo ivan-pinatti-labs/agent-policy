@@ -874,9 +874,19 @@ expect = "none"
 [[case]]
 command = "timeout --preserve-status 5 true"
 expect = "none"
+# Nesting deeper than the guard reads is asked about, never passed unchecked.
 [[case]]
 command = "eval eval eval eval eval eval true"
-expect = "none"
+expect = "ask"
+[[case]]
+command = "eval eval eval eval eval eval rm -rf /"
+expect = "ask"
+[[case]]
+command = "echo $(echo $(echo $(echo $(echo $(echo $(rm -rf /))))))"
+expect = "deny"
+[[case]]
+command = "eval eval eval eval rm -rf /"
+expect = "deny"
 [[case]]
 command = "podman run --rm --security-opt no-new-privileges alpine true"
 expect = "none"

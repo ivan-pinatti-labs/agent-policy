@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """The guard's edges that a command line alone cannot reach."""
 
+import importlib.machinery
+import importlib.util
 import json
 import os
 import shutil
@@ -106,6 +108,36 @@ class HookPayloads(unittest.TestCase):
         self.assertEqual(
             "deny", json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"]
         )
+
+    def test_agent_scratch_runs_from_the_installed_layout(self):
+        # make install puts lib/ next to agent-scratch in libexec, and runs
+        # it through a symlink in bin/.
+        with tempfile.TemporaryDirectory() as prefix:
+            libexec, bin_dir = Path(prefix) / "libexec", Path(prefix) / "bin"
+            libexec.mkdir()
+            bin_dir.mkdir()
+            shutil.copy(ROOT / "bin" / "agent-scratch", libexec)
+            shutil.copytree(ROOT / "lib", libexec / "lib")
+            (bin_dir / "agent-scratch").symlink_to(libexec / "agent-scratch")
+            proc = subprocess.run(
+                [sys.executable, str(bin_dir / "agent-scratch"), "--help"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        self.assertIn("agent-scratch dir", proc.stdout)
+
+    def test_importing_the_scripts_runs_nothing(self):
+        for name, path in (
+            ("guard", ROOT / "hooks" / "guard"),
+            ("scratch", ROOT / "bin" / "agent-scratch"),
+        ):
+            with self.subTest(script=name):
+                loader = importlib.machinery.SourceFileLoader(f"script_{name}", str(path))
+                spec = importlib.util.spec_from_file_location(loader.name, path, loader=loader)
+                module = importlib.util.module_from_spec(spec)
+                loader.exec_module(module)
+                self.assertTrue(callable(module.main))
 
     def test_no_command_is_no_opinion(self):
         self.assertIsNone(self.run_hook({"tool_input": {}}))

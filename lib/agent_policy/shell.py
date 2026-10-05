@@ -196,7 +196,8 @@ def _split_redirects(tokens):
 def segments(command, _depth=0):
     """Yield a Segment for every simple command the line would run."""
     if _depth > 4:
-        return
+        # Deeper nesting is not read, so it cannot pass as checked.
+        raise ParseError("command substitution or eval nested too deep to check")
     text = strip_heredoc_bodies(command)
     for inner in _substitutions(text):
         yield from segments(inner, _depth + 1)

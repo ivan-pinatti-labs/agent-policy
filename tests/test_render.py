@@ -87,22 +87,27 @@ class Render(unittest.TestCase):
             self.assertIn(f"~/{rel}", sandbox["filesystem"]["denyRead"])
 
     def test_readme_examples_match_the_build(self):
-        # Each block marked `<!-- built: FILE -->` in the README must be made
-        # of lines that appear in that built file; `...` elides the rest.
+        # Each block marked `<!-- built: FILE -->` in the README must be the
+        # built file's own lines, in its order and with its indentation;
+        # `...` elides lines, and a trailing comma may be left off.
         import re
 
         readme = (ROOT / "README.md").read_text()
         blocks = re.findall(r"<!-- built: (\S+) -->\n```\w*\n(.*?)\n```", readme, re.S)
         self.assertEqual(3, len(blocks))
         for name, body in blocks:
-            built = (Path(self.tmp) / name).read_text()
-            lines = {line.strip().rstrip(",") for line in built.splitlines()}
+            built = [
+                line.rstrip().rstrip(",")
+                for line in (Path(self.tmp) / name).read_text().splitlines()
+            ]
+            at = 0
             for line in body.splitlines():
-                wanted = line.strip().rstrip(",")
-                if wanted in ("", "..."):
+                wanted = line.rstrip().rstrip(",")
+                if wanted.strip() in ("", "..."):
                     continue
                 with self.subTest(file=name, line=wanted):
-                    self.assertIn(wanted, lines)
+                    self.assertIn(wanted, built[at:], "missing, or out of order")
+                    at = built.index(wanted, at) + 1
 
     def test_every_rule_has_a_known_severity(self):
         rules = render.load(ROOT / "policy")

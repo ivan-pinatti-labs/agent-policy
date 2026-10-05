@@ -169,15 +169,15 @@ allow, 735 ask and 95 deny rules in all):
       ...
     ],
     "ask": [
+      "Bash(*gh api*-X POST*)",
       "Bash(podman rm *)",
       "Bash(terraform apply *)",
-      "Bash(*gh api*-X POST*)",
       ...
     ],
     "deny": [
+      "Read(~/.claude*/.credentials.json)",
       "Bash(*git*push*--force*)",
       "Bash(*terraform destroy*)",
-      "Read(~/.claude*/.credentials.json)",
       ...
     ],
     "additionalDirectories": [
@@ -206,8 +206,8 @@ severity in the justification Codex shows:
 
 <!-- built: codex/agent-policy.rules -->
 ```python
-prefix_rule(pattern=["terraform", "destroy"], decision="forbidden", justification="[severe] Destroys infrastructure: the user runs it")
 prefix_rule(pattern=["podman", ["build", "pull", "run", "exec", "create", "start", "restart", "stop", "attach", "cp", "wait", "tag"]], decision="allow", justification="[low] Build, pull, run and exec with rootless podman; the guard checks run flags")
+prefix_rule(pattern=["terraform", "destroy"], decision="forbidden", justification="[severe] Destroys infrastructure: the user runs it")
 ```
 
 `dist/codex/requirements.toml`, the guard as a Codex managed hook that a
