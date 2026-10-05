@@ -159,10 +159,17 @@ make restore BACKUP=~/.local/state/agent-policy/backups/<timestamp>
 ```
 
 `make restore` first prints what it would change (a dry run), then, with
-`sudo`, puts every file, symlink, mode and owner back as it was, and
-removes anything created since, including a path that was absent when the
-backup was taken. Restoring the same backup twice changes nothing the
-second time.
+`sudo`, puts every file, symlink and mode back as it was, and removes
+anything created since, including a path that was absent when the backup
+was taken. Restoring the same backup twice changes nothing the second time.
+
+Restore runs as root on a folder you own, so it trusts the backup only as
+far as it has to. It touches only the paths make passes it; it reads each
+stored copy without following a symlink and only if its hash matches the
+manifest; it writes without following a symlink; it never restores a
+setuid, setgid or sticky bit; and a restored path takes the owner of the
+folder it is restored into, never one named in the manifest. It does put
+back whatever content the backup holds, so read the dry run first.
 
 ## Not verified yet
 

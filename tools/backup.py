@@ -249,7 +249,7 @@ def restore(dest, allow, dry_run=False, log=print, backup_root=None):
         if kind == "absent":
             continue
         current = os.path.lexists(path) and record(path)
-        if current and current["type"] == kind and current == entry:
+        if current and same(current, entry):
             continue
         actions.append(("restore", path))
         if dry_run:
@@ -263,14 +263,58 @@ def restore(dest, allow, dry_run=False, log=print, backup_root=None):
             os.symlink(entry["target"], path)
         else:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(stored(dest, path), path)
+            write_copy(read_copy(dest, path, entry), path)
         if kind != "symlink":
-            os.chmod(path, entry["mode"])
+            # Never setuid, setgid or sticky: restore applies this as root.
+            os.chmod(path, entry["mode"] & 0o777, follow_symlinks=False)
         if as_root:
-            os.lchown(path, entry["uid"], entry["gid"])
+            # The owner comes from the folder it is restored into, never from
+            # the manifest, which its user can edit: /etc stays root's, a
+            # folder in the home stays its user's.
+            parent = os.stat(Path(path).parent)
+            os.lchown(path, parent.st_uid, parent.st_gid)
     for action, path in actions:
         log(f"{'would ' if dry_run else ''}{action} {path}")
     return actions
+
+
+def same(current, entry):
+    """Whether the path already matches the entry (owner not compared: restore
+    never takes it from the manifest)."""
+    keys = ("type", "mode", "target", "sha256")
+    return all(current.get(k) == entry.get(k) for k in keys)
+
+
+def read_copy(dest, path, entry):
+    """The stored copy's bytes, read without following a symlink anywhere on the
+    way, from a regular file whose hash matches the manifest."""
+    copy = stored(dest, path)
+    if Path(os.path.realpath(copy)) != copy:
+        raise BackupError(f"the stored copy of {path} is reached through a symlink")
+    fd = os.open(copy, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise BackupError(f"the stored copy of {path} is not a regular file")
+        chunks = []
+        while chunk := os.read(fd, 1 << 16):
+            chunks.append(chunk)
+    finally:
+        os.close(fd)
+    data = b"".join(chunks)
+    if hashlib.sha256(data).hexdigest() != entry.get("sha256"):
+        raise BackupError(f"the stored copy of {path} does not match its manifest")
+    return data
+
+
+def write_copy(data, path):
+    """Write `data` to `path` without following a symlink there."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    try:
+        view = memoryview(data)
+        while view:
+            view = view[os.write(fd, view) :]
+    finally:
+        os.close(fd)
 
 
 def list_backups(root):

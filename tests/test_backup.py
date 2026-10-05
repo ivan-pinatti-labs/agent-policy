@@ -204,6 +204,36 @@ class Backup(unittest.TestCase):
             )
             self.assertEqual(1, backup.main(["restore", "--allow", "/opt/thing", str(self.dest)]))
 
+    def test_refuses_a_stored_copy_that_is_a_symlink(self):
+        secret = self.tmp / "root-only"
+        secret.write_text("secret\n")
+        backup.create(self.dest, self.paths)
+        copy = backup.stored(self.dest, self.policy / "managed-settings.json")
+        copy.unlink()
+        copy.symlink_to(secret)
+        (self.policy / "managed-settings.json").write_text("changed\n")
+        with self.assertRaises((backup.BackupError, OSError)):
+            backup.restore(self.dest, self.paths, log=lambda *_: None)
+        self.assertEqual("changed\n", (self.policy / "managed-settings.json").read_text())
+
+    def test_refuses_a_stored_copy_that_does_not_match(self):
+        backup.create(self.dest, self.paths)
+        backup.stored(self.dest, self.policy / "managed-settings.json").write_text("evil\n")
+        (self.policy / "managed-settings.json").write_text("changed\n")
+        with self.assertRaises(backup.BackupError):
+            backup.restore(self.dest, self.paths, log=lambda *_: None)
+
+    def test_special_mode_bits_are_never_restored(self):
+        def change(m):
+            entry = next(e for e in m["entries"] if e["path"].endswith("managed-settings.json"))
+            entry["mode"] = 0o6755
+
+        self.tamper(change)
+        (self.policy / "managed-settings.json").write_text("changed\n")
+        backup.restore(self.dest, self.paths, log=lambda *_: None)
+        mode = os.stat(self.policy / "managed-settings.json").st_mode & 0o7777
+        self.assertEqual(0o755, mode)
+
     def test_cli_reports_failure(self):
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(
