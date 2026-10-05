@@ -163,6 +163,9 @@ def create(dest, paths):
                 copy.mkdir(exist_ok=True)
             else:
                 shutil.copyfile(path, copy)
+                # Readable by its owner only, whatever the original allowed:
+                # the copy may hold a secret, and restore sets the real mode.
+                os.chmod(copy, 0o600)
                 if sha256(copy) != entry["sha256"]:
                     raise BackupError(f"the copy of {path} does not match it")
             entries.append(entry)
@@ -174,6 +177,7 @@ def create(dest, paths):
     }
     partial = dest / (MANIFEST + ".partial")
     partial.write_text(json.dumps(manifest, indent=2) + "\n")
+    os.chmod(partial, 0o600)
     os.replace(partial, dest / MANIFEST)
     return manifest
 

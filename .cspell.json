@@ -75,6 +75,7 @@
     "healthcheck",
     "heredocs",
     "hexdump",
+    "HOMEX",
     "hookspath",
     "hostnames",
     "inputrc",

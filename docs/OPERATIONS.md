@@ -153,6 +153,14 @@ not exist is recorded as absent. If anything fails (a file it cannot read,
 a full disk), make stops there: nothing is built and nothing is installed.
 The backup itself only reads those paths; it never writes to them.
 
+Copies are byte for byte, never stripped, since restore has to put back
+exactly what was there; a token someone placed in a policy file is copied
+with it. So each backup folder is readable by you only (the folder `0700`,
+every copy and the manifest `0600`), and agents treat
+`~/.local/state/agent-policy` like any other credential folder: the guard
+refuses reading, copying or mounting it, and the sandbox denies reading it.
+`make backups` and `make restore` still work, because make runs them.
+
 ```shell
 make backups                                  # list them, newest first
 make restore BACKUP=~/.local/state/agent-policy/backups/<timestamp>
