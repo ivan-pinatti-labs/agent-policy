@@ -76,6 +76,27 @@ jobs:
       # lacks; rsync-crypt's own copy of this workflow keeps
       # ncipollo/release-action instead, because it sets allowUpdates,
       # which gh has no equivalent for.
+      # The built policy, attached to the release so anyone can read exactly
+      # what a version installs without cloning or building. tools/render.py
+      # is standard library only, so the runner's Python builds it. The
+      # archive is reproducible: sorted entries, fixed owners and the tagged
+      # commit's timestamp, gzip without a name or time.
+      - name: Build the policy archive
+        if: steps.tag_version.outputs.new_tag != ''
+        env:
+          TAG: ${{ steps.tag_version.outputs.new_tag }}
+        run: |
+          python3 tools/render.py --out dist
+          cp LICENSE.md NOTICE.md dist/
+          epoch="$(git log -1 --format=%ct)"
+          name="agent-policy-${TAG}"
+          tar --sort=name --owner=0 --group=0 --numeric-owner \
+            --mtime="@${epoch}" --transform "s|^\.|${name}|" -cf - -C dist . |
+            gzip -n -9 >"${name}.tar.gz"
+          sha256sum "${name}.tar.gz" >SHA256SUMS
+          tar -tzf "${name}.tar.gz"
+          cat SHA256SUMS
+
       - name: Create release
         if: steps.tag_version.outputs.new_tag != ''
         env:
@@ -86,4 +107,5 @@ jobs:
           gh release create "$TAG" \
             --title "Release $TAG" \
             --notes "$NOTES" \
-            --generate-notes
+            --generate-notes \
+            "agent-policy-${TAG}.tar.gz" SHA256SUMS
