@@ -347,12 +347,15 @@ def restore_at(path, entry, data, as_root, roots=()):
                 else:
                     os.unlink(name, dir_fd=parent)
         if kind == "symlink":
-            # Checked once more right here, with every symlink on the way to
-            # the target resolved, and written as that resolved path.
-            target = Path(entry["target"]).resolve()
-            if not any(target.is_relative_to(root.resolve()) for root in roots):
+            # Checked once more right here, as text only (resolving a path a
+            # user wrote, as root, would let them probe the filesystem). Text
+            # is enough: the target is absolute with no `..`, and every link
+            # restore makes is confined the same way, so following links
+            # inside a root cannot lead out of it.
+            target = os.path.abspath(entry["target"])
+            if not any(target == str(r) or target.startswith(str(r) + os.sep) for r in roots):
                 raise BackupError(f"the link {path} points outside the allowed paths")
-            os.symlink(str(target), name, dir_fd=parent)
+            os.symlink(target, name, dir_fd=parent)
             if as_root:
                 os.chown(name, owner.st_uid, owner.st_gid, dir_fd=parent, follow_symlinks=False)
             return
