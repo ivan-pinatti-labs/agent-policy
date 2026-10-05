@@ -35,7 +35,7 @@ command = ["podman", "pod", "pause", "p"]
 expect = "prompt"
 [[case]]
 command = ["podman", "pod", "ps"]
-expect = "none"   # still read-only: left to Codex's sandbox
+expect = "allow"  # the podman read rule covers both agents
 [[case]]
 command = ["agent-scratch", "ls"]
 expect = "allow"  # from policy/70-scratch.toml now; gone with --no-scratch
