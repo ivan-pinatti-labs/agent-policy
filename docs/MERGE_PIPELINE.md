@@ -210,8 +210,8 @@ gh pr comment <n> --body '@coderabbitai review'
 
 ## The merge queue
 
-Branch protection on `main` requires `Pre-commit`, `SonarQube`, `Pin Only`
-and `Review Verified`, one approval, dismissal of stale reviews, approval of the
+Branch protection on `main` requires `Pre-commit`, `Tests`, `SonarQube`,
+`Pin Only` and `Review Verified`, one approval, dismissal of stale reviews, approval of the
 last push, conversation resolution and a linear history. `enforce_admins`
 is `false`, which matters for exactly one account: it lets the owner merge
 without being blocked by rules an admin can bypass, but it does not exempt
@@ -221,8 +221,8 @@ above necessary. `allow_auto_merge` has to be enabled, or the queue cannot
 accept anything at all.
 
 The merge queue ruleset carries no bypass actor, deliberately: `merge_group`
-triggers on `pull-request.yml`, `coderabbit-gate.yml` and `sonarqube.yml`
-exist so that every
+triggers on `pull-request.yml`, `tests.yml`, `coderabbit-gate.yml` and
+`sonarqube.yml` exist so that every
 required context runs a second time against the queue's own temporary
 commit before anything actually merges, and a bypass actor would let a
 pull request skip that second run entirely.

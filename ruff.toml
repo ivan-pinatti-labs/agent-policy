@@ -34,5 +34,7 @@ select = [
 # never a shell string, so S602 (shell injection) stays on everywhere.
 "lib/agent_policy/containers.py" = ["S603", "S607"]
 # Tests run the guard, agent-scratch and codex as subprocesses on purpose,
-# with argument lists, against fixtures they built themselves.
-"tests/**" = ["E402", "S101", "S108", "S603", "S607"]
+# with argument lists, against fixtures they built themselves, and set
+# permissive or special modes on temporary files to check that restore
+# never brings those bits back (S103).
+"tests/**" = ["E402", "S101", "S103", "S108", "S603", "S607"]

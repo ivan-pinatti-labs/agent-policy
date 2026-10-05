@@ -10,8 +10,9 @@ make test
 make install
 ```
 
-`make install` renders the policy in the test container, then copies, with
-`sudo`:
+`make install` first backs up everything it is about to touch (see
+"Backups" below); only once that backup is complete and verified does it
+render the policy in the test container and copy, with `sudo`:
 
 | What                       | Where                                                      |
 | -------------------------- | ---------------------------------------------------------- |
@@ -129,8 +130,56 @@ not retry it, rephrase it or work around it; ask the user to run it with
 make uninstall
 ```
 
-Removes everything install added. `/etc/codex/requirements.toml` is removed
-only if agent-policy wrote it.
+Backs up first, like install, then removes everything install added.
+`/etc/codex/requirements.toml` is removed only if agent-policy wrote it.
+
+## Backups
+
+`make install` and `make uninstall` both start with `make backup`, which
+copies everything they touch into a new timestamped folder under
+`~/.local/state/agent-policy/backups/` (`BACKUP_ROOT` moves it):
+
+- the Claude Code policy folder, `/etc/claude-code` (the drop-in folder and
+  any `managed-settings.json` next to it);
+- `/etc/codex`;
+- the installed scripts, `/usr/local/libexec/agent-policy`, and the
+  `agent-scratch` link;
+- each Codex `rules` folder (`~/.codex/rules`, including Codex's own
+  `default.rules`).
+
+Each copy is checked against its source, and the backup's `manifest.json`
+is written last, so a folder without one is not a backup. A path that does
+not exist is recorded as absent. If anything fails (a file it cannot read,
+a full disk), make stops there: nothing is built and nothing is installed.
+The backup itself only reads those paths; it never writes to them.
+
+```shell
+make backups                                  # list them, newest first
+make restore BACKUP=~/.local/state/agent-policy/backups/<timestamp>
+```
+
+`make restore` first prints what it would change (a dry run), then, with
+`sudo`, puts every file, symlink and mode back as it was, and removes
+anything created since, including a path that was absent when the backup
+was taken. Restoring the same backup twice changes nothing the second time.
+
+Restore runs as root on a folder you own, so it trusts the backup only as
+far as it has to. It touches only the paths make passes it; it reads each
+stored copy without following a symlink and only if its hash matches the
+manifest; it writes without following a symlink; it never restores a setuid,
+setgid or sticky bit; and a restored path takes the owner of the folder it
+is restored into, never one named in the manifest. It opens every folder
+from `/` without following a symlink and writes through those handles, so a
+symlink anywhere on the way makes it stop rather than follow (on a system
+where `/home` itself is a symlink, restore the home folder's paths by hand).
+Folders it has to re-create take the owner of the folder they are made in. A
+symlink is put back only if it points inside those same paths, and always as
+that absolute, normalized target: a link in the policy folder to a file you
+own would make that file root-managed policy, and a link at `agent-scratch`
+to your own script would run it with no prompt. A backup holding a link that
+points elsewhere is refused, naming the link, so you can put that one back
+by hand. It does put back whatever content the backup holds, so read the dry
+run first.
 
 ## Not verified yet
 

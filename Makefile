@@ -8,7 +8,7 @@
 # checkmake reads only the first physical line of a .PHONY declaration and
 # silently drops backslash continuations, so every .PHONY here is written on
 # one line (checkmake#280).
-.PHONY: all help workbench-help image build test coverage harvest install uninstall diff clean
+.PHONY: all help workbench-help image build test coverage harvest backup backups restore install uninstall diff clean
 
 # Bare `make` shows the target list rather than doing something surprising.
 all: help
@@ -19,6 +19,17 @@ CLAUDE_MANAGED_DIR ?= /etc/claude-code/managed-settings.d
 CODEX_SYSTEM_DIR   ?= /etc/codex
 CODEX_HOMES        ?= $(HOME)/.codex
 TEST_IMAGE         ?= localhost/agent-policy-test
+# The host's own Python, never a version manager's shim: backup and restore
+# run on the host, as the guard does.
+PYTHON             ?= /usr/bin/python3
+
+# Everything install and uninstall touch, backed up whole before either
+# writes a byte: the Claude Code policy folder (managed-settings.d and the
+# managed-settings.json next to it), /etc/codex, the installed scripts, the
+# agent-scratch link, and each Codex rules folder.
+BACKUP_ROOT  ?= $(or $(XDG_STATE_HOME),$(HOME)/.local/state)/agent-policy/backups
+BACKUP_PATHS  = $(patsubst %/,%,$(dir $(CLAUDE_MANAGED_DIR))) $(CODEX_SYSTEM_DIR)
+BACKUP_PATHS += $(LIBEXEC) $(PREFIX)/bin/agent-scratch $(addsuffix /rules,$(CODEX_HOMES))
 ENGINE             ?= podman
 
 # The folder holding this repository's main clone, which is where its sibling
@@ -58,8 +69,11 @@ help:
 		'  build       Build the policy for both agents into dist/.' \
 		'  harvest     Compare this machine'"'"'s permission files with the policy.' \
 		'  diff        Show how the installed policy differs from this checkout.' \
-		'  install     Install for both agents and every profile (sudo).' \
-		'  uninstall   Remove everything install added (sudo).' \
+		'  install     Back up, then install for both agents and every profile (sudo).' \
+		'  uninstall   Back up, then remove everything install added (sudo).' \
+		'  backup      Back up everything install touches, and nothing else.' \
+		'  backups     List the backups, newest first.' \
+		'  restore     Put a backup back: make restore BACKUP=<folder> (sudo).' \
 		'  clean       Remove dist/.' \
 		''
 	@$(MAKE) --no-print-directory workbench-help
@@ -87,7 +101,20 @@ harvest: image
 	$(ENGINE) run --rm --network=none --userns=keep-id:uid=1000,gid=1000 -v "$(CURDIR):/work:ro,Z" \
 		-v "$$staging:/staging:ro,Z" -w /work $(TEST_IMAGE) python3 tools/harvest.py /staging
 
-install: build
+# A failed backup stops make here, before anything is built or installed.
+backup:
+	$(PYTHON) tools/backup.py create --root "$(BACKUP_ROOT)" $(BACKUP_PATHS)
+
+backups:
+	@$(PYTHON) tools/backup.py list "$(BACKUP_ROOT)"
+
+restore:
+	@test -n "$(BACKUP)" || { echo "usage: make restore BACKUP=<folder>  (make backups lists them)"; exit 2; }
+	$(PYTHON) tools/backup.py restore --dry-run --backup-root "$(BACKUP_ROOT)" $(addprefix --allow ,$(BACKUP_PATHS)) "$(BACKUP)"
+	sudo $(PYTHON) tools/backup.py restore --backup-root "$(BACKUP_ROOT)" $(addprefix --allow ,$(BACKUP_PATHS)) "$(BACKUP)"
+
+install: backup
+	@$(MAKE) --no-print-directory build
 	sudo install -d -m 0755 $(LIBEXEC)/lib/agent_policy $(PREFIX)/bin $(CLAUDE_MANAGED_DIR) $(CODEX_SYSTEM_DIR)
 	sudo install -m 0755 hooks/guard bin/agent-scratch $(LIBEXEC)/
 	sudo install -m 0644 lib/agent_policy/*.py $(LIBEXEC)/lib/agent_policy/
@@ -105,7 +132,7 @@ install: build
 		echo "install: codex rules -> $$home/rules/agent-policy.rules"; \
 	done
 
-uninstall:
+uninstall: backup
 	sudo rm -f $(CLAUDE_MANAGED_DIR)/50-agent-policy.json $(PREFIX)/bin/agent-scratch
 	sudo rm -rf $(LIBEXEC)
 	@if grep -qs 'Managed by agent-policy' $(CODEX_SYSTEM_DIR)/requirements.toml; then \
