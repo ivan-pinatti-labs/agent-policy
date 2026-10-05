@@ -176,7 +176,7 @@ does one that needs more than four levels of reading again: a script
 handed to `bash -c` or `eval` (or found in a substitution) that itself
 holds one, and so on. The guard stops reading there, so it cannot vouch
 for what is below. Nested `$(...)` does not count toward that limit: the
-guard takes each innermost `$(...)` body (and each `...` one)
+guard takes each innermost `$(...)` body (and each backtick body)
 straight from the line, however deep it sits.
 
 ### Paths are judged by where they lead
