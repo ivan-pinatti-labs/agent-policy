@@ -260,7 +260,7 @@ def restore(dest, allow, dry_run=False, log=print, backup_root=None):
             continue
         path = str(inside(path, roots))
         data = read_copy(dest, path, entry) if kind == "file" else None
-        restore_at(path, entry, data, as_root)
+        restore_at(path, entry, data, as_root, roots)
     for action, path in actions:
         log(f"{'would ' if dry_run else ''}{action} {path}")
     return actions
@@ -328,7 +328,7 @@ def remove_at(path):
         os.close(parent)
 
 
-def restore_at(path, entry, data, as_root):
+def restore_at(path, entry, data, as_root, roots=()):
     """Make `path` match `entry` through descriptors only."""
     parent = open_dir(Path(path).parent, create=True)
     name = Path(path).name
@@ -347,7 +347,12 @@ def restore_at(path, entry, data, as_root):
                 else:
                     os.unlink(name, dir_fd=parent)
         if kind == "symlink":
-            os.symlink(entry["target"], name, dir_fd=parent)
+            # Checked once more right here, with every symlink on the way to
+            # the target resolved, and written as that resolved path.
+            target = Path(entry["target"]).resolve()
+            if not any(target.is_relative_to(root.resolve()) for root in roots):
+                raise BackupError(f"the link {path} points outside the allowed paths")
+            os.symlink(str(target), name, dir_fd=parent)
             if as_root:
                 os.chown(name, owner.st_uid, owner.st_gid, dir_fd=parent, follow_symlinks=False)
             return
