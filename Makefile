@@ -110,8 +110,8 @@ backups:
 
 restore:
 	@test -n "$(BACKUP)" || { echo "usage: make restore BACKUP=<folder>  (make backups lists them)"; exit 2; }
-	$(PYTHON) tools/backup.py restore --dry-run "$(BACKUP)"
-	sudo $(PYTHON) tools/backup.py restore "$(BACKUP)"
+	$(PYTHON) tools/backup.py restore --dry-run --backup-root "$(BACKUP_ROOT)" $(addprefix --allow ,$(BACKUP_PATHS)) "$(BACKUP)"
+	sudo $(PYTHON) tools/backup.py restore --backup-root "$(BACKUP_ROOT)" $(addprefix --allow ,$(BACKUP_PATHS)) "$(BACKUP)"
 
 install: backup
 	@$(MAKE) --no-print-directory build

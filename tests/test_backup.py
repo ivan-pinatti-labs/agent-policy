@@ -74,20 +74,20 @@ class Backup(unittest.TestCase):
         backup.create(self.dest, self.paths)
         self.install_something()
         self.assertNotEqual(before, self.state())
-        backup.restore(self.dest, log=lambda *_: None)
+        backup.restore(self.dest, self.paths, log=lambda *_: None)
         self.assertEqual(before, self.state())
 
     def test_restore_is_idempotent(self):
         backup.create(self.dest, self.paths)
         self.install_something()
-        backup.restore(self.dest, log=lambda *_: None)
-        self.assertEqual([], backup.restore(self.dest, log=lambda *_: None))
+        backup.restore(self.dest, self.paths, log=lambda *_: None)
+        self.assertEqual([], backup.restore(self.dest, self.paths, log=lambda *_: None))
 
     def test_dry_run_changes_nothing(self):
         backup.create(self.dest, self.paths)
         self.install_something()
         after_install = self.state()
-        actions = backup.restore(self.dest, dry_run=True, log=lambda *_: None)
+        actions = backup.restore(self.dest, self.paths, dry_run=True, log=lambda *_: None)
         self.assertTrue(actions)
         self.assertEqual(after_install, self.state())
 
@@ -114,7 +114,7 @@ class Backup(unittest.TestCase):
             backup.create(self.dest, self.paths)
         self.assertFalse((self.dest / backup.MANIFEST).exists())
         with self.assertRaises(backup.BackupError):
-            backup.restore(self.dest, log=lambda *_: None)
+            backup.restore(self.dest, self.paths, log=lambda *_: None)
         os.chmod(secret, 0o600)
 
     def test_refuses_a_non_empty_destination(self):
@@ -136,12 +136,71 @@ class Backup(unittest.TestCase):
         self.assertEqual([str(p) for p in self.paths], manifest["roots"])
         self.install_something()
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(0, backup.main(["restore", str(made[0])]))
+            allow = [arg for p in self.paths for arg in ("--allow", str(p))]
+            self.assertEqual(
+                0, backup.main(["restore", "--backup-root", str(root), *allow, str(made[0])])
+            )
         self.assertIsNone(snapshot(self.absent))
+
+    def tamper(self, change):
+        backup.create(self.dest, self.paths)
+        path = self.dest / backup.MANIFEST
+        manifest = json.loads(path.read_text())
+        change(manifest)
+        path.write_text(json.dumps(manifest))
+
+    def assert_refused(self):
+        with self.assertRaises(backup.BackupError):
+            backup.restore(self.dest, self.paths, log=lambda *_: None)
+
+    def test_refuses_a_root_that_was_not_allowed(self):
+        victim = self.tmp / "victim"
+        victim.write_text("keep\n")
+
+        def change(m):
+            m["roots"].append(str(victim))
+            m["entries"].append({"path": str(victim), "type": "absent"})
+
+        self.tamper(change)
+        self.assert_refused()
+        self.assertEqual("keep\n", victim.read_text())
+
+    def test_refuses_an_entry_outside_its_root(self):
+        victim = self.tmp / "victim"
+        victim.write_text("keep\n")
+
+        def change(m):
+            entry = next(e for e in m["entries"] if e["type"] == "file")
+            entry["path"] = str(self.policy / ".." / ".." / "victim")
+
+        self.tamper(change)
+        self.assert_refused()
+        self.assertEqual("keep\n", victim.read_text())
+
+    def test_refuses_a_path_reached_through_a_symlink(self):
+        outside = self.tmp / "outside"
+        outside.mkdir()
+        backup.create(self.dest, self.paths)
+        # After the backup, a folder inside a root becomes a link out of it.
+        shutil.rmtree(self.policy / "managed-settings.d")
+        (self.policy / "managed-settings.d").symlink_to(outside)
+        backup.restore(self.dest, self.paths, log=lambda *_: None)
+        self.assertFalse((self.policy / "managed-settings.d").is_symlink())
+        self.assertEqual([], list(outside.iterdir()))
+        self.assertTrue((self.policy / "managed-settings.d" / "10-other.json").is_file())
+
+    def test_refuses_a_backup_outside_the_backup_root(self):
+        backup.create(self.dest, self.paths)
+        with self.assertRaises(backup.BackupError):
+            backup.restore(
+                self.dest, self.paths, log=lambda *_: None, backup_root=self.tmp / "elsewhere"
+            )
 
     def test_cli_reports_failure(self):
         with contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(1, backup.main(["restore", str(self.tmp / "nothing")]))
+            self.assertEqual(
+                1, backup.main(["restore", "--allow", str(self.policy), str(self.tmp / "nothing")])
+            )
 
 
 if __name__ == "__main__":

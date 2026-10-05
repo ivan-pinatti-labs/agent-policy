@@ -16,6 +16,13 @@ non-zero on any failure, so `make install` stops before writing anything.
 A PATH that does not exist is recorded as absent, so restoring removes what
 install created there. Standard library only: it runs on the host's system
 Python, like the guard.
+
+Restore runs as root on a folder its user can write, so it trusts nothing in
+the manifest it was not told on the command line: every root must be one of
+the --allow paths, every entry must sit inside its root once symlinks in its
+parent are resolved, every stored copy must sit inside the backup, and the
+backup itself must sit under --backup-root. A tampered manifest can at most
+put back files under the paths install itself writes.
 """
 
 import argparse
@@ -36,6 +43,22 @@ class BackupError(Exception):
     pass
 
 
+def resolved_root(path):
+    return Path(os.path.realpath(os.path.abspath(path)))
+
+
+def inside(path, roots):
+    """`path` with its parent's symlinks resolved, if it sits inside one of
+    `roots` (already resolved); BackupError if not. The last component is not
+    resolved, so a symlink is judged, and handled, as the symlink itself."""
+    absolute = Path(os.path.abspath(path))
+    checked = Path(os.path.realpath(absolute.parent)) / absolute.name
+    for root in roots:
+        if checked == root or checked.is_relative_to(root):
+            return checked
+    raise BackupError(f"{path} is outside the paths this backup may touch")
+
+
 def default_root():
     state = os.environ.get("XDG_STATE_HOME") or os.path.join(Path.home(), ".local", "state")
     return Path(state) / "agent-policy" / "backups"
@@ -51,7 +74,11 @@ def sha256(path):
 
 def stored(dest, path):
     """Where the copy of absolute `path` lives inside the backup."""
-    return Path(dest) / "files" / Path(path).relative_to("/")
+    base = resolved_root(Path(dest) / "files")
+    copy = Path(os.path.normpath(base / Path(path).relative_to("/")))
+    if not copy.is_relative_to(base):
+        raise BackupError(f"{path} would be stored outside the backup")
+    return copy
 
 
 def walk(root):
@@ -90,12 +117,13 @@ def create(dest, paths):
     os.chmod(dest, 0o700)
     roots, entries = [], []
     for raw in paths:
-        root = Path(os.path.abspath(raw))
+        root = inside(raw, [resolved_root(Path(raw).parent)])
         roots.append(str(root))
         if not os.path.lexists(root):
             entries.append({"path": str(root), "type": "absent"})
             continue
-        for path in walk(root):
+        for found in walk(root):
+            path = inside(found, [root])
             entry = record(path)
             copy = stored(dest, path)
             copy.parent.mkdir(parents=True, exist_ok=True)
@@ -120,7 +148,12 @@ def create(dest, paths):
     return manifest
 
 
-def load(dest):
+def load(dest, backup_root=None):
+    if backup_root is not None:
+        folder = resolved_root(dest)
+        if not folder.is_relative_to(resolved_root(backup_root)):
+            raise BackupError(f"{dest} is not under the backup root {backup_root}")
+        dest = folder
     path = Path(dest) / MANIFEST
     if not path.is_file():
         raise BackupError(f"{dest} has no {MANIFEST}: it is not a complete backup")
@@ -137,21 +170,44 @@ def remove(path):
         shutil.rmtree(path)
 
 
-def restore(dest, dry_run=False, log=print):
+def checked_manifest(manifest, allow):
+    """The manifest's roots and entries, each confined to the --allow paths."""
+    allowed = {str(inside(a, [resolved_root(Path(a).parent)])) for a in allow}
+    roots = []
+    for root in manifest["roots"]:
+        if root not in allowed:
+            raise BackupError(f"the backup names {root}, which is not an --allow path")
+        roots.append(inside(root, [resolved_root(Path(root).parent)]))
+    entries = []
+    for entry in manifest["entries"]:
+        # Lexically here (no `..`, inside a root); with symlinks resolved
+        # again just before each write, once earlier steps have run.
+        path = Path(os.path.normpath(os.path.abspath(entry["path"])))
+        if not any(path == root or path.is_relative_to(root) for root in roots):
+            raise BackupError(f"{entry['path']} is outside the paths this backup may touch")
+        entry = dict(entry, path=str(path))
+        if entry["type"] not in ("file", "dir", "symlink", "absent"):
+            raise BackupError(f"unknown entry type for {entry['path']}")
+        entries.append(entry)
+    return roots, entries
+
+
+def restore(dest, allow, dry_run=False, log=print, backup_root=None):
     """Return the list of actions; perform them unless dry_run."""
-    manifest = load(dest)
-    entries = manifest["entries"]
+    manifest = load(dest, backup_root)
+    roots, entries = checked_manifest(manifest, allow)
     # Paths the backup holds. An absent root is not one of them: if it
     # exists now, install created it, and it goes.
     known = {e["path"] for e in entries if e["type"] != "absent"}
     actions = []
     # Anything under a root that the backup does not know was added since:
     # remove it, deepest first.
-    for root in manifest["roots"]:
+    for root in roots:
         if not os.path.lexists(root):
             continue
         extra = [p for p in walk(Path(root)) if str(p) not in known]
-        for path in sorted(extra, key=lambda p: len(p.parts), reverse=True):
+        for found in sorted(extra, key=lambda p: len(p.parts), reverse=True):
+            path = inside(found, roots)
             if os.path.lexists(path):
                 actions.append(("remove", str(path)))
                 if not dry_run:
@@ -168,6 +224,7 @@ def restore(dest, dry_run=False, log=print):
         actions.append(("restore", path))
         if dry_run:
             continue
+        path = str(inside(path, roots))
         if current and (current["type"] != kind or kind == "symlink"):
             remove(path)
         if kind == "dir":
@@ -209,6 +266,13 @@ def main(argv=None):
     make.add_argument("paths", nargs="+")
     back = sub.add_parser("restore")
     back.add_argument("dest")
+    back.add_argument(
+        "--allow",
+        action="append",
+        required=True,
+        help="a path restore may touch; repeat for each (make passes them)",
+    )
+    back.add_argument("--backup-root", default=str(default_root()))
     back.add_argument("--dry-run", action="store_true")
     show = sub.add_parser("list")
     show.add_argument("root", nargs="?", default=str(default_root()))
@@ -221,7 +285,9 @@ def main(argv=None):
             saved = sum(1 for e in manifest["entries"] if e["type"] != "absent")
             print(f"backup: {saved} entries from {len(args.paths)} paths in {dest}")
         elif args.command == "restore":
-            actions = restore(args.dest, dry_run=args.dry_run)
+            actions = restore(
+                args.dest, args.allow, dry_run=args.dry_run, backup_root=args.backup_root
+            )
             print(f"restore: {len(actions)} changes{' (dry run)' if args.dry_run else ''}")
         else:
             for path, manifest in list_backups(args.root):
