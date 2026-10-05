@@ -234,6 +234,45 @@ class Backup(unittest.TestCase):
         mode = os.stat(self.policy / "managed-settings.json").st_mode & 0o7777
         self.assertEqual(0o755, mode)
 
+    def test_restore_is_idempotent_for_special_mode_bits(self):
+        special = self.policy / "managed-settings.d" / "30-setgid.json"
+        special.write_text("{}\n")
+        os.chmod(special, 0o2755)
+        backup.create(self.dest, self.paths)
+        special.write_text("changed\n")
+        backup.restore(self.dest, self.paths, log=lambda *_: None)
+        self.assertEqual([], backup.restore(self.dest, self.paths, log=lambda *_: None))
+
+    def test_a_symlink_in_a_parent_folder_stops_the_restore(self):
+        backup.create(self.dest, self.paths)
+        (self.rules / "default.rules").write_text("changed\n")
+        # Swap the folder above a root for a link to somewhere else that has
+        # the same layout: a path-based write would follow it.
+        outside = self.tmp / "outside"
+        (outside / "rules").mkdir(parents=True)
+        codex = self.rules.parent
+        shutil.move(str(codex), str(self.tmp / "codex-moved"))
+        codex.symlink_to(outside)
+        with self.assertRaises((backup.BackupError, OSError)):
+            backup.restore(self.dest, self.paths, log=lambda *_: None)
+        self.assertEqual([], list((outside / "rules").iterdir()))
+
+    def test_a_parent_swapped_after_the_check_is_not_followed(self):
+        backup.create(self.dest, self.paths)
+        target = self.rules / "default.rules"
+        target.write_text("changed\n")
+        entry = next(e for e in backup.load(self.dest)["entries"] if e["path"] == str(target))
+        data = backup.read_copy(self.dest, str(target), entry)
+        # The race: the path passed every check, then a parent becomes a link.
+        outside = self.tmp / "outside"
+        (outside / "rules").mkdir(parents=True)
+        codex = self.rules.parent
+        shutil.move(str(codex), str(self.tmp / "codex-moved"))
+        codex.symlink_to(outside)
+        with self.assertRaises(OSError):
+            backup.restore_at(str(target), entry, data, as_root=False)
+        self.assertEqual([], list((outside / "rules").iterdir()))
+
     def test_cli_reports_failure(self):
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(

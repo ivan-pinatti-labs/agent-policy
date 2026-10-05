@@ -193,13 +193,6 @@ def load(dest, backup_root=None):
     return manifest
 
 
-def remove(path):
-    if os.path.islink(path) or not os.path.isdir(path):
-        os.unlink(path)
-    else:
-        shutil.rmtree(path)
-
-
 def checked_manifest(manifest, allow):
     """The manifest's roots and entries, each confined to the --allow paths."""
     allowed = {str(inside(a, [resolved_root(Path(a).parent)])) for a in allow}
@@ -241,7 +234,7 @@ def restore(dest, allow, dry_run=False, log=print, backup_root=None):
             if os.path.lexists(path):
                 actions.append(("remove", str(path)))
                 if not dry_run:
-                    remove(path)
+                    remove_at(path)
     as_root = hasattr(os, "geteuid") and os.geteuid() == 0
     for entry in entries:
         path = entry["path"]
@@ -255,34 +248,113 @@ def restore(dest, allow, dry_run=False, log=print, backup_root=None):
         if dry_run:
             continue
         path = str(inside(path, roots))
-        if current and (current["type"] != kind or kind == "symlink"):
-            remove(path)
-        if kind == "dir":
-            os.makedirs(path, exist_ok=True)
-        elif kind == "symlink":
-            os.symlink(entry["target"], path)
-        else:
-            Path(path).parent.mkdir(parents=True, exist_ok=True)
-            write_copy(read_copy(dest, path, entry), path)
-        if kind != "symlink":
-            # Never setuid, setgid or sticky: restore applies this as root.
-            os.chmod(path, entry["mode"] & 0o777, follow_symlinks=False)
-        if as_root:
-            # The owner comes from the folder it is restored into, never from
-            # the manifest, which its user can edit: /etc stays root's, a
-            # folder in the home stays its user's.
-            parent = os.stat(Path(path).parent)
-            os.lchown(path, parent.st_uid, parent.st_gid)
+        data = read_copy(dest, path, entry) if kind == "file" else None
+        restore_at(path, entry, data, as_root)
     for action, path in actions:
         log(f"{'would ' if dry_run else ''}{action} {path}")
     return actions
 
 
 def same(current, entry):
-    """Whether the path already matches the entry (owner not compared: restore
-    never takes it from the manifest)."""
-    keys = ("type", "mode", "target", "sha256")
-    return all(current.get(k) == entry.get(k) for k in keys)
+    """Whether the path already matches what restore would make of the entry:
+    the mode as restore applies it, owner not compared (restore never takes it
+    from the manifest)."""
+    if current.get("type") != entry.get("type"):
+        return False
+    if current.get("target") != entry.get("target") or current.get("sha256") != entry.get("sha256"):
+        return False
+    return entry["type"] == "symlink" or current.get("mode") == entry.get("mode", 0) & 0o777
+
+
+# Restore writes as root into folders a user may own, so it never resolves a
+# path by name: it opens every folder from / one component at a time without
+# following a symlink, and creates, writes, chmods and chowns through those
+# descriptors. A symlink anywhere on the way, planted before or during the
+# restore, makes it fail instead of following.
+DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+
+
+def open_dir(path, create=False):
+    """A descriptor for the folder `path`, walked from / without following
+    symlinks; missing folders are made (0o755) when `create`."""
+    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in Path(path).parts[1:]:
+            try:
+                child = os.open(part, DIR_FLAGS, dir_fd=fd)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                os.mkdir(part, 0o755, dir_fd=fd)
+                child = os.open(part, DIR_FLAGS, dir_fd=fd)
+            os.close(fd)
+            fd = child
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def remove_at(path):
+    """Remove `path` through its parent's descriptor, without following it."""
+    parent = open_dir(Path(path).parent)
+    name = Path(path).name
+    try:
+        info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        if stat.S_ISDIR(info.st_mode):
+            shutil.rmtree(name, dir_fd=parent)
+        else:
+            os.unlink(name, dir_fd=parent)
+    finally:
+        os.close(parent)
+
+
+def restore_at(path, entry, data, as_root):
+    """Make `path` match `entry` through descriptors only."""
+    parent = open_dir(Path(path).parent, create=True)
+    name = Path(path).name
+    kind = entry["type"]
+    try:
+        owner = os.fstat(parent)
+        try:
+            info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        except FileNotFoundError:
+            info = None
+        if info is not None:
+            is_dir = stat.S_ISDIR(info.st_mode)
+            if kind == "symlink" or (kind == "dir") != is_dir:
+                if is_dir:
+                    shutil.rmtree(name, dir_fd=parent)
+                else:
+                    os.unlink(name, dir_fd=parent)
+        if kind == "symlink":
+            os.symlink(entry["target"], name, dir_fd=parent)
+            if as_root:
+                os.chown(name, owner.st_uid, owner.st_gid, dir_fd=parent, follow_symlinks=False)
+            return
+        if kind == "dir":
+            try:
+                os.mkdir(name, 0o700, dir_fd=parent)
+            except FileExistsError:
+                pass
+            fd = os.open(name, DIR_FLAGS, dir_fd=parent)
+        else:
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW
+            fd = os.open(name, flags, 0o600, dir_fd=parent)
+        try:
+            if data is not None:
+                view = memoryview(data)
+                while view:
+                    view = view[os.write(fd, view) :]
+            # Never setuid, setgid or sticky: restore applies this as root.
+            os.fchmod(fd, entry["mode"] & 0o777)
+            if as_root:
+                # The owner of the folder it lands in, never the manifest's.
+                os.fchown(fd, owner.st_uid, owner.st_gid)
+        finally:
+            os.close(fd)
+    finally:
+        os.close(parent)
 
 
 def read_copy(dest, path, entry):
@@ -304,17 +376,6 @@ def read_copy(dest, path, entry):
     if hashlib.sha256(data).hexdigest() != entry.get("sha256"):
         raise BackupError(f"the stored copy of {path} does not match its manifest")
     return data
-
-
-def write_copy(data, path):
-    """Write `data` to `path` without following a symlink there."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-    try:
-        view = memoryview(data)
-        while view:
-            view = view[os.write(fd, view) :]
-    finally:
-        os.close(fd)
 
 
 def list_backups(root):

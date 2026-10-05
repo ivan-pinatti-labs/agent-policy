@@ -168,8 +168,12 @@ far as it has to. It touches only the paths make passes it; it reads each
 stored copy without following a symlink and only if its hash matches the
 manifest; it writes without following a symlink; it never restores a
 setuid, setgid or sticky bit; and a restored path takes the owner of the
-folder it is restored into, never one named in the manifest. It does put
-back whatever content the backup holds, so read the dry run first.
+folder it is restored into, never one named in the manifest. It opens
+every folder from `/` without following a symlink and writes through those
+handles, so a symlink anywhere on the way makes it stop rather than follow
+(on a system where `/home` itself is a symlink, restore the home folder's
+paths by hand). It does put back whatever content the backup holds, so read
+the dry run first.
 
 ## Not verified yet
 
