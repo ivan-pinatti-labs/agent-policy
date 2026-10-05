@@ -74,7 +74,7 @@ def source_bases():
 
 
 def resolved_root(path):
-    return Path(os.path.realpath(os.path.abspath(path)))
+    return Path(path).resolve()
 
 
 def inside(path, roots):
