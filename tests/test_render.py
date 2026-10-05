@@ -86,6 +86,24 @@ class Render(unittest.TestCase):
         for rel in containers.CREDENTIAL_DIRS + containers.CREDENTIAL_FILES:
             self.assertIn(f"~/{rel}", sandbox["filesystem"]["denyRead"])
 
+    def test_readme_examples_match_the_build(self):
+        # Each block marked `<!-- built: FILE -->` in the README must be made
+        # of lines that appear in that built file; `...` elides the rest.
+        import re
+
+        readme = (ROOT / "README.md").read_text()
+        blocks = re.findall(r"<!-- built: (\S+) -->\n```\w*\n(.*?)\n```", readme, re.S)
+        self.assertEqual(3, len(blocks))
+        for name, body in blocks:
+            built = (Path(self.tmp) / name).read_text()
+            lines = {line.strip().rstrip(",") for line in built.splitlines()}
+            for line in body.splitlines():
+                wanted = line.strip().rstrip(",")
+                if wanted in ("", "..."):
+                    continue
+                with self.subTest(file=name, line=wanted):
+                    self.assertIn(wanted, lines)
+
     def test_every_rule_has_a_known_severity(self):
         rules = render.load(ROOT / "policy")
         for rule in rules:

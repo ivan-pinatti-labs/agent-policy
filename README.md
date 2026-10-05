@@ -58,6 +58,7 @@ the combination to use.
 - [Requirements](#requirements)
 - [Usage](#usage)
 - [How it works](#how-it-works)
+- [What it builds](#what-it-builds)
 - [Repository layout](#repository-layout)
 - [Documentation](#documentation)
 - [AI Usage and Attribution](#ai-usage-and-attribution)
@@ -147,6 +148,87 @@ allowing `git push origin main`; `tests/codex_cases.toml` records exactly
 that, and the guard is what closes the gap.
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) has the details, including how
 each agent receives the policy and what differs between them.
+
+## What it builds
+
+`make build` writes three files to `dist/`, and `make install` puts them in
+place. The excerpts below are real: a test checks every line of them against
+a fresh build, so they cannot drift from what install actually writes.
+
+`dist/claude/50-agent-policy.json`, the Claude Code drop-in (about 1,250
+allow, 735 ask and 95 deny rules in all):
+
+<!-- built: claude/50-agent-policy.json -->
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat *)",
+      "Bash(git push *)",
+      "Bash(podman build *)",
+      ...
+    ],
+    "ask": [
+      "Bash(podman rm *)",
+      "Bash(terraform apply *)",
+      "Bash(*gh api*-X POST*)",
+      ...
+    ],
+    "deny": [
+      "Bash(*git*push*--force*)",
+      "Bash(*terraform destroy*)",
+      "Read(~/.claude*/.credentials.json)",
+      ...
+    ],
+    "additionalDirectories": [
+      "~/scratch"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/libexec/agent-policy/guard --agent claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`dist/codex/agent-policy.rules`, the Codex prefix rules, each carrying its
+severity in the justification Codex shows:
+
+<!-- built: codex/agent-policy.rules -->
+```python
+prefix_rule(pattern=["terraform", "destroy"], decision="forbidden", justification="[severe] Destroys infrastructure: the user runs it")
+prefix_rule(pattern=["podman", ["build", "pull", "run", "exec", "create", "start", "restart", "stop", "attach", "cp", "wait", "tag"]], decision="allow", justification="[low] Build, pull, run and exec with rootless podman; the guard checks run flags")
+```
+
+`dist/codex/requirements.toml`, the guard as a Codex managed hook that a
+user's own configuration cannot turn off:
+
+<!-- built: codex/requirements.toml -->
+```toml
+[features]
+hooks = true
+
+[hooks]
+managed_dir = "/usr/local/libexec/agent-policy"
+
+[[hooks.PreToolUse]]
+matcher = "^Bash$"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "/usr/local/libexec/agent-policy/guard --agent codex"
+timeout = 10
+```
 
 ## Repository layout
 

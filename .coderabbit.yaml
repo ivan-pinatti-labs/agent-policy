@@ -70,8 +70,12 @@ reviews:
           with" line, an agent session link, or any other line that names
           or links the agent that wrote the change.
         Also check that every behavior change comes with tests that would
-        fail without it, and that the docs describe the new behavior. Do
-        not comment on formatting the pre-commit hooks already enforce.
+        fail without it, and that the docs describe the new behavior. The
+        organization's rule is 100% test coverage of the code it ships:
+        flag, as a blocking issue, any new or changed line or branch of code
+        (not docs or configuration) that no test exercises, and name the
+        test that would cover it. Do not comment on formatting the
+        pre-commit hooks already enforce.
     - path: "**/*.md"
       instructions: |
         Prose does not use a hyphen, em dash or en dash as punctuation; use
