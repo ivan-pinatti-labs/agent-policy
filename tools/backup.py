@@ -33,6 +33,7 @@ import os
 import shutil
 import stat
 import sys
+import tempfile
 from pathlib import Path
 
 MANIFEST = "manifest.json"
@@ -41,6 +42,35 @@ FORMAT = 1
 
 class BackupError(Exception):
     pass
+
+
+def confine(path, bases, what):
+    """`path` resolved, if it sits under one of the fixed `bases`; BackupError
+    if not. Applied to every path the command line names, which an agent may
+    write, before anything reads or writes it."""
+    candidate = resolved_root(path)
+    for base in bases:
+        if candidate.is_relative_to(resolved_root(base)):
+            return candidate
+    raise BackupError(f"{what} {candidate} is outside {', '.join(map(str, bases))}")
+
+
+def confine_source(path):
+    """A path to back up or restore, kept as given (its own symlink is backed up
+    as a symlink) once its folder is confirmed to sit under source_bases()."""
+    absolute = Path(os.path.abspath(path))
+    confine(absolute.parent, source_bases(), "the path")
+    return absolute
+
+
+def backup_bases():
+    """Where backups may live: the default backup folder, or a temporary one."""
+    return [default_root(), tempfile.gettempdir()]
+
+
+def source_bases():
+    """Where the paths install touches may live."""
+    return ["/etc", "/usr/local", Path.home(), tempfile.gettempdir()]
 
 
 def resolved_root(path):
@@ -280,17 +310,21 @@ def main(argv=None):
     try:
         if args.command == "create":
             stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
-            dest = Path(args.dest) if args.dest else Path(args.root) / stamp
-            manifest = create(dest, args.paths)
+            raw_dest = Path(args.dest) if args.dest else Path(args.root) / stamp
+            dest = confine(raw_dest, backup_bases(), "the backup folder")
+            paths = [confine_source(p) for p in args.paths]
+            manifest = create(dest, paths)
             saved = sum(1 for e in manifest["entries"] if e["type"] != "absent")
             print(f"backup: {saved} entries from {len(args.paths)} paths in {dest}")
         elif args.command == "restore":
-            actions = restore(
-                args.dest, args.allow, dry_run=args.dry_run, backup_root=args.backup_root
-            )
+            dest = confine(args.dest, backup_bases(), "the backup folder")
+            backup_root = confine(args.backup_root, backup_bases(), "the backup root")
+            allow = [confine_source(p) for p in args.allow]
+            actions = restore(dest, allow, dry_run=args.dry_run, backup_root=backup_root)
             print(f"restore: {len(actions)} changes{' (dry run)' if args.dry_run else ''}")
         else:
-            for path, manifest in list_backups(args.root):
+            root = confine(args.root, backup_bases(), "the backup root")
+            for path, manifest in list_backups(root):
                 print(f"{path}  {manifest['created']}  {len(manifest['roots'])} paths")
     except (BackupError, OSError) as err:
         print(f"backup: {err}", file=sys.stderr)

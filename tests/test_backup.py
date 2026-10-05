@@ -196,6 +196,14 @@ class Backup(unittest.TestCase):
                 self.dest, self.paths, log=lambda *_: None, backup_root=self.tmp / "elsewhere"
             )
 
+    def test_cli_refuses_paths_outside_the_fixed_bases(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(1, backup.main(["create", "--dest", "/var/x", str(self.policy)]))
+            self.assertEqual(
+                1, backup.main(["create", "--root", str(self.tmp / "b"), "/opt/thing"])
+            )
+            self.assertEqual(1, backup.main(["restore", "--allow", "/opt/thing", str(self.dest)]))
+
     def test_cli_reports_failure(self):
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(
