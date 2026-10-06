@@ -122,11 +122,11 @@ reviews:
       - name: Public repository hygiene
         mode: warning
         instructions: >-
-          Fail if the diff, commit messages or pull request text add a
-          secret or something that looks like one, an email address other
-          than a users.noreply.github.com one, an absolute home path, a host
-          name, a private IP address, a cloud account ID or ARN, or details
-          of a personal deployment. Pass otherwise.
+          Fail if the diff, commit messages or pull request text add a secret
+          or something that looks like one, an email address other than a
+          users.noreply.github.com one, an absolute home path, a private or
+          machine specific host name, a private IP address, a cloud account ID
+          or ARN, or details of a personal deployment. Pass otherwise.
       - name: No AI attribution
         mode: warning
         instructions: >-
@@ -148,5 +148,7 @@ knowledge_base:
     enabled: true
     filePatterns:
       - AGENTS.md
-      - docs/POLICY.md
-      - docs/ARCHITECTURE.md
+      # Guidelines outside the root apply only to their own folder unless
+      # applyTo widens them, and these govern the whole repository.
+      - files: "docs/POLICY.md,docs/ARCHITECTURE.md"
+        applyTo: "**/*"
