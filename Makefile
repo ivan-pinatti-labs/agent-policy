@@ -78,11 +78,14 @@ help:
 		''
 	@$(MAKE) --no-print-directory workbench-help
 
+# Quiet unless it fails: podman still prints its errors, and a cached build
+# is one line instead of every step.
 image:
-	$(ENGINE) build -t $(TEST_IMAGE) -f tests/Containerfile tests
+	@$(ENGINE) build -q -t $(TEST_IMAGE) -f tests/Containerfile tests >/dev/null
+	@echo "image: $(TEST_IMAGE) ready"
 
 build: image
-	$(RUN) python3 tools/render.py --out dist --libexec $(LIBEXEC)
+	@$(RUN) python3 tools/render.py --out dist --libexec $(LIBEXEC)
 
 test: image
 	$(RUN) python3 -m unittest discover -s tests -v
@@ -139,13 +142,29 @@ uninstall: backup
 		sudo rm -f $(CODEX_SYSTEM_DIR)/requirements.toml; fi
 	@for home in $(CODEX_HOMES); do rm -f "$$home/rules/agent-policy.rules"; done
 
+# Each installed file against what install would write, as installed path
+# and source pair. A missing file is new (nothing installed there yet), not an
+# error; only a changed one prints its diff.
+DIFF_PAIRS  = $(CLAUDE_MANAGED_DIR)/50-agent-policy.json=dist/claude/50-agent-policy.json
+DIFF_PAIRS += $(CODEX_SYSTEM_DIR)/requirements.toml=dist/codex/requirements.toml
+DIFF_PAIRS += $(foreach home,$(CODEX_HOMES),$(home)/rules/agent-policy.rules=dist/codex/agent-policy.rules)
+DIFF_PAIRS += $(LIBEXEC)/lib/agent_policy=lib/agent_policy
+DIFF_PAIRS += $(LIBEXEC)/guard=hooks/guard $(LIBEXEC)/agent-scratch=bin/agent-scratch
+
 diff: build
-	-diff -u $(CLAUDE_MANAGED_DIR)/50-agent-policy.json dist/claude/50-agent-policy.json
-	-diff -u $(CODEX_SYSTEM_DIR)/requirements.toml dist/codex/requirements.toml
-	-@for home in $(CODEX_HOMES); do diff -u "$$home/rules/agent-policy.rules" dist/codex/agent-policy.rules; done
-	-diff -ru -x __pycache__ $(LIBEXEC)/lib/agent_policy lib/agent_policy
-	-diff -u $(LIBEXEC)/guard hooks/guard
-	-diff -u $(LIBEXEC)/agent-scratch bin/agent-scratch
+	@new=0; changed=0; same=0; \
+	for pair in $(DIFF_PAIRS); do \
+		installed="$${pair%%=*}"; source="$${pair#*=}"; \
+		if [ ! -e "$$installed" ]; then \
+			echo "  new        $$installed"; new=$$((new + 1)); \
+		elif diff -rq -x __pycache__ "$$installed" "$$source" >/dev/null; then \
+			echo "  unchanged  $$installed"; same=$$((same + 1)); \
+		else \
+			echo "  changed    $$installed"; changed=$$((changed + 1)); \
+			diff -ru -x __pycache__ "$$installed" "$$source" | sed 's/^/      /'; \
+		fi; \
+	done; \
+	echo "diff: $$new new, $$changed changed, $$same unchanged; nothing was installed (make install does that)"
 
 clean:
 	rm -rf dist .coverage .coverage.* coverage.xml
