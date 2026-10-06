@@ -62,9 +62,10 @@ reviews:
           email addresses other than a users.noreply.github.com one, phone
           numbers, physical addresses;
         - machine specific details: absolute home paths (/home/<user>,
-          /Users/<user>), host names, LAN or private IP addresses, internal
-          domains, cloud account IDs, ARNs, AWS profile names, cluster
-          contexts, and details of anyone's own deployment;
+          /Users/<user>), private or machine specific host names, LAN or
+          private IP addresses, internal domains, cloud account IDs, ARNs,
+          AWS profile names, cluster contexts, and details of anyone's own
+          deployment;
         - AI attribution in any file, commit message or the pull request
           text: a Co-Authored-By trailer naming an AI agent, a "Generated
           with" line, an agent session link, or any other line that names
@@ -148,5 +149,7 @@ knowledge_base:
     enabled: true
     filePatterns:
       - AGENTS.md
-      - docs/POLICY.md
-      - docs/ARCHITECTURE.md
+      # Guidelines outside the root apply only to their own folder unless
+      # applyTo widens them, and these govern the whole repository.
+      - files: "docs/POLICY.md,docs/ARCHITECTURE.md"
+        applyTo: "**/*"
