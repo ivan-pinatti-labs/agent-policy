@@ -87,8 +87,21 @@ def compare(installed, source):
     return "".join(parts) or None
 
 
+def present(path):
+    """Whether something is at path. Only a missing path is absent: any other
+    failure (an unreadable parent, a file where a folder belongs) cannot be
+    told apart from an installed copy, so it is an error, never new."""
+    try:
+        os.lstat(path)
+    except FileNotFoundError:
+        return False
+    except OSError as err:
+        raise CompareError(f"{path}: {err.strerror}") from err
+    return True
+
+
 def compare_link(link, target):
-    if not os.path.lexists(link):
+    if not present(link):
         return "new", None
     if not os.path.islink(link):
         raise CompareError(f"{link} is not a symbolic link")
@@ -120,7 +133,7 @@ def main(argv=None, out=sys.stdout):
 
     for installed, source in args.pairs:
         try:
-            if not os.path.lexists(installed):
+            if not present(installed):
                 report("new", installed)
                 continue
             detail = compare(installed, source)

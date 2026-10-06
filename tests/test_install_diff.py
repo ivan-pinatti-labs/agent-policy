@@ -85,6 +85,18 @@ class InstallDiff(unittest.TestCase):
         self.assertEqual(1, status)
         self.assertIn("error", out)
 
+    def test_a_path_behind_an_unreadable_folder_is_an_error_not_new(self):
+        hidden = self.tmp / "hidden"
+        (hidden / "lib").mkdir(parents=True)
+        hidden.chmod(0)
+        status, out = self.run_tool(
+            f"{hidden / 'lib'}={self.src / 'lib'}", f"--link={hidden / 'link'}=x"
+        )
+        self.assertEqual(1, status)
+        self.assertIn(f"  error      {hidden / 'lib'}", out)
+        self.assertIn(f"  error      {hidden / 'link'}", out)
+        self.assertNotIn("  new ", out)
+
     def test_the_link_install_creates(self):
         target = self.src / "a.json"
         link = self.inst / "link"
