@@ -52,7 +52,10 @@ bubblewrap refuses to start rather than silently running unsandboxed.
 ## Updating
 
 **Repository to machine:** `git pull && make install`. `make diff` first
-shows what would change.
+lists each file install writes, and the `agent-scratch` link, as new
+(nothing there yet), changed (with its diff) or unchanged, and installs
+nothing. A path it cannot compare (unreadable, or a file where a folder
+belongs) is reported as an error and fails the command.
 
 **Machine to repository:** see the next section. The policy is never edited
 in place on a machine; local changes become pull requests.

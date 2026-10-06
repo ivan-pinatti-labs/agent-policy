@@ -78,11 +78,14 @@ help:
 		''
 	@$(MAKE) --no-print-directory workbench-help
 
+# Quiet unless it fails: podman still prints its errors, and a cached build
+# is one line instead of every step.
 image:
-	$(ENGINE) build -t $(TEST_IMAGE) -f tests/Containerfile tests
+	@$(ENGINE) build -q -t $(TEST_IMAGE) -f tests/Containerfile tests >/dev/null
+	@echo "image: $(TEST_IMAGE) ready"
 
 build: image
-	$(RUN) python3 tools/render.py --out dist --libexec $(LIBEXEC)
+	@$(RUN) python3 tools/render.py --out dist --libexec $(LIBEXEC)
 
 test: image
 	$(RUN) python3 -m unittest discover -s tests -v
@@ -125,7 +128,8 @@ install: backup
 		echo "install: $(CODEX_SYSTEM_DIR)/requirements.toml exists and is not ours;"; \
 		echo "         add the hook from dist/codex/requirements.toml to it by hand."; \
 	else \
-		sudo install -m 0644 dist/codex/requirements.toml $(CODEX_SYSTEM_DIR)/requirements.toml; \
+		sudo install -m 0644 dist/codex/requirements.toml $(CODEX_SYSTEM_DIR)/requirements.toml && \
+		echo "install: codex hook -> $(CODEX_SYSTEM_DIR)/requirements.toml"; \
 	fi
 	@for home in $(CODEX_HOMES); do \
 		install -d "$$home/rules" && install -m 0644 dist/codex/agent-policy.rules "$$home/rules/" && \
@@ -139,13 +143,18 @@ uninstall: backup
 		sudo rm -f $(CODEX_SYSTEM_DIR)/requirements.toml; fi
 	@for home in $(CODEX_HOMES); do rm -f "$$home/rules/agent-policy.rules"; done
 
+# Each installed file against what install would write, as installed path
+# and source pair, plus the agent-scratch link install creates. A missing
+# file is new (nothing installed there yet), not an error; tools/install_diff.py
+# prints the diff only for a changed one, and fails on one it cannot compare.
+DIFF_PAIRS  = $(CLAUDE_MANAGED_DIR)/50-agent-policy.json=dist/claude/50-agent-policy.json
+DIFF_PAIRS += $(CODEX_SYSTEM_DIR)/requirements.toml=dist/codex/requirements.toml
+DIFF_PAIRS += $(foreach home,$(CODEX_HOMES),$(home)/rules/agent-policy.rules=dist/codex/agent-policy.rules)
+DIFF_PAIRS += $(LIBEXEC)/lib/agent_policy=lib/agent_policy
+DIFF_PAIRS += $(LIBEXEC)/guard=hooks/guard $(LIBEXEC)/agent-scratch=bin/agent-scratch
+
 diff: build
-	-diff -u $(CLAUDE_MANAGED_DIR)/50-agent-policy.json dist/claude/50-agent-policy.json
-	-diff -u $(CODEX_SYSTEM_DIR)/requirements.toml dist/codex/requirements.toml
-	-@for home in $(CODEX_HOMES); do diff -u "$$home/rules/agent-policy.rules" dist/codex/agent-policy.rules; done
-	-diff -ru -x __pycache__ $(LIBEXEC)/lib/agent_policy lib/agent_policy
-	-diff -u $(LIBEXEC)/guard hooks/guard
-	-diff -u $(LIBEXEC)/agent-scratch bin/agent-scratch
+	@$(PYTHON) tools/install_diff.py $(DIFF_PAIRS) --link $(PREFIX)/bin/agent-scratch=$(LIBEXEC)/agent-scratch
 
 clean:
 	rm -rf dist .coverage .coverage.* coverage.xml
