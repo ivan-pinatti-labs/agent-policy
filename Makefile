@@ -128,7 +128,8 @@ install: backup
 		echo "install: $(CODEX_SYSTEM_DIR)/requirements.toml exists and is not ours;"; \
 		echo "         add the hook from dist/codex/requirements.toml to it by hand."; \
 	else \
-		sudo install -m 0644 dist/codex/requirements.toml $(CODEX_SYSTEM_DIR)/requirements.toml; \
+		sudo install -m 0644 dist/codex/requirements.toml $(CODEX_SYSTEM_DIR)/requirements.toml && \
+		echo "install: codex hook -> $(CODEX_SYSTEM_DIR)/requirements.toml"; \
 	fi
 	@for home in $(CODEX_HOMES); do \
 		install -d "$$home/rules" && install -m 0644 dist/codex/agent-policy.rules "$$home/rules/" && \
