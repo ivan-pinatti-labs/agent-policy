@@ -171,7 +171,13 @@ write:
 5. `bash -c '...'`, `sh -c '...'` and `eval '...'` are read again as
    command lines.
 
-A line that cannot be tokenized (unbalanced quotes) gets an `ask`.
+A line that cannot be tokenized (unbalanced quotes) gets an `ask`, and so
+does one that needs more than four levels of reading again: a script
+handed to `bash -c` or `eval` (or found in a substitution) that itself
+holds one, and so on. The guard stops reading there, so it cannot vouch
+for what is below. Nested `$(...)` does not count toward that limit: the
+guard takes each innermost `$(...)` body (and each backtick body)
+straight from the line, however deep it sits.
 
 ### Paths are judged by where they lead
 
@@ -212,3 +218,14 @@ host:
   free of home paths.
 - `tests/test_scratch.py`: `agent-scratch` against a fake `podman` that
   records every call.
+- `tests/test_guard_edges.py` and `tests/test_tools_edges.py`: the paths a
+  command line alone cannot reach, such as an engine that fails, a hook
+  payload of the wrong shape, a tampered backup manifest or an invalid
+  policy file.
+
+`make coverage` runs the same suite under coverage.py, measuring the guard,
+`agent-scratch` and the tools in the subprocesses the tests start (each
+also from the layout `make install` gives it), and fails below
+100% of lines and branches. The SonarQube workflow runs it on every pull
+request, so an uncovered line fails a required check. Code no test can
+reach is removed rather than excluded, and nothing is excluded.

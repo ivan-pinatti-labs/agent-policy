@@ -43,6 +43,10 @@ refused.
    make test
    ```
 
+   Every line and branch of code is covered by a test. `make coverage` runs
+   the suite with coverage and fails below 100%, as the SonarQube check does
+   on a pull request.
+
 4. Commit using [Conventional Commits](https://www.conventionalcommits.org/),
    for example `fix: correct a typo in the README`. No ticket prefix is
    required by default.

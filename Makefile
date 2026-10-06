@@ -65,7 +65,7 @@ help:
 		'Targets:' \
 		'  help        Show this message.' \
 		'  test        Run every test in the test container.' \
-		'  coverage    Run the tests with coverage, writing coverage.xml.' \
+		'  coverage    Run the tests with coverage, writing coverage.xml; fails under 100%.' \
 		'  build       Build the policy for both agents into dist/.' \
 		'  harvest     Compare this machine'"'"'s permission files with the policy.' \
 		'  diff        Show how the installed policy differs from this checkout.' \

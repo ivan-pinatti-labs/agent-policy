@@ -16,3 +16,8 @@ source =
     /work/hooks
     /work/bin
     /work/tools
+
+[report]
+# Every line and branch is covered, and the suite fails otherwise. Code a
+# test cannot reach is removed, not excluded; nothing is excluded.
+fail_under = 100

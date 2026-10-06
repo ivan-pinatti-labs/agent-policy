@@ -5,6 +5,7 @@
 Appends each call to $STUB_LOG as a JSON line. `<kind> inspect <name>`
 prints $STUB_STATE/<kind>/<name>.json or fails like podman does. A listing
 (`ps`, `network ls`, `volume ls`) prints $STUB_STATE/list/<ps|network|volume>.
+A call that starts with $STUB_FAIL exits 1.
 """
 
 import json
@@ -16,6 +17,9 @@ args = sys.argv[1:]
 with open(os.environ["STUB_LOG"], "a", encoding="utf-8") as log:
     log.write(json.dumps(args) + "\n")
 state = os.environ["STUB_STATE"]
+# STUB_FAIL names a call (its first words, space separated) to fail.
+if os.environ.get("STUB_FAIL") and " ".join(args).startswith(os.environ["STUB_FAIL"]):
+    sys.exit(1)
 if len(args) >= 3 and args[1] == "inspect":
     path = os.path.join(state, args[0], args[2] + ".json")
     if os.path.exists(path):

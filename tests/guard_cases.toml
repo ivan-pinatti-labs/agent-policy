@@ -651,3 +651,242 @@ expect = "deny"
 [[case]]
 command = "grep -n pattern src/a.py src/b.py"
 expect = "none"
+
+# Coverage: every branch of the guard, each with the decision it must reach
+
+# mounts
+[[case]]
+command = "mount /mnt/usb"
+expect = "none"
+
+# pattern tools: option forms
+[[case]]
+command = "grep -- -v notes.txt"
+expect = "none"
+[[case]]
+command = "grep --regexp secret ~/.netrc"
+expect = "deny"
+[[case]]
+command = "grep --file ~/.ssh/id_rsa notes.txt"
+expect = "deny"
+[[case]]
+command = "grep --file=patterns.txt ~/.aws/credentials"
+expect = "deny"
+[[case]]
+command = "grep --file"
+expect = "none"
+[[case]]
+command = "grep --color=auto token notes.txt"
+expect = "none"
+[[case]]
+command = "grep -f"
+expect = "none"
+[[case]]
+command = "sed -n 1p notes.txt"
+expect = "none"
+
+# writes inside a protected deployment
+[[case]]
+command = "cp notes.txt /home/user/live/notes.txt"
+expect = "deny"
+
+# git global options and config keys
+[[case]]
+command = "git -ccore.pager=less log"
+expect = "deny"
+[[case]]
+command = "git --no-pager log"
+expect = "none"
+[[case]]
+command = "git -C repo"
+expect = "none"
+[[case]]
+command = "git -c diff.tool.textconv=cat log"
+expect = "deny"
+[[case]]
+command = "git -c user.name=me commit -m x"
+expect = "none"
+[[case]]
+command = "git clean -n"
+expect = "none"
+[[case]]
+command = "git tag v1.0.0"
+expect = "none"
+[[case]]
+command = "git worktree remove --force old"
+expect = "ask"
+[[case]]
+command = "git worktree remove old"
+expect = "none"
+[[case]]
+command = "git update-ref -d refs/heads/old"
+expect = "ask"
+[[case]]
+command = "git config core.pager less"
+expect = "deny"
+[[case]]
+command = "git config --get core.pager"
+expect = "none"
+[[case]]
+command = "git push origin HEAD:main"
+expect = "ask"
+[[case]]
+command = "git commit -mfix"
+expect = "none"
+[[case]]
+command = "git commit -as"
+expect = "none"
+[[case]]
+command = "git commit --author 'A <a@users.noreply.github.com>' -m x"
+expect = "none"
+
+# gh, curl, wget
+[[case]]
+command = "gh api graphql -F query=@query.graphql"
+expect = "ask"
+[[case]]
+command = "curl https://example.invalid/x -sSLo"
+expect = "none"
+[[case]]
+command = "curl -X DELETE https://example.invalid/x"
+expect = "ask"
+[[case]]
+command = "curl --request=PATCH https://example.invalid/x"
+expect = "ask"
+[[case]]
+command = "wget --post-data=a=b https://example.invalid/x"
+expect = "ask"
+[[case]]
+command = "wget https://example.invalid/x"
+expect = "none"
+
+# rm
+[[case]]
+command = "rm -rf --no-preserve-root /"
+expect = "deny"
+[[case]]
+command = "rm -rf *"
+expect = "deny"
+
+# aws
+[[case]]
+command = "aws s3"
+expect = "none"
+[[case]]
+command = "aws s3 rb s3://bucket --force"
+expect = "deny"
+[[case]]
+command = "aws s3 rm s3://bucket/key"
+expect = "ask"
+[[case]]
+command = "aws s3 ls"
+expect = "none"
+[[case]]
+command = "aws ssm get-parameter --name x --with-decryption"
+expect = "ask"
+[[case]]
+command = "aws --region us-east-1 --debug ec2 describe-instances"
+expect = "none"
+
+# container engines
+[[case]]
+command = "podman container rm -f live-app"
+expect = "deny"
+[[case]]
+command = "podman"
+expect = "none"
+[[case]]
+command = "podman cp ./notes.txt dev-app:/tmp/notes.txt"
+expect = "none"
+[[case]]
+command = "podman cp dev-app:/etc/hosts ./hosts"
+expect = "none"
+[[case]]
+command = "podman stop -t 5 live-app"
+expect = "deny"
+[[case]]
+command = "podman compose -f compose.yml"
+expect = "none"
+[[case]]
+command = "podman run --rm -v ~/.config/app:/c alpine true"
+expect = "ask"
+[[case]]
+command = "podman run --rm --volume=/home/user/.ssh:/s alpine true"
+expect = "deny"
+[[case]]
+command = "podman run --rm --mount type=tmpfs,dst=/t alpine true"
+expect = "none"
+[[case]]
+command = "podman run --rm --mount type=bind,dst=/t alpine true"
+expect = "none"
+[[case]]
+command = "podman run --rm --security-opt label=disable alpine true"
+expect = "ask"
+[[case]]
+command = "podman run --rm -v /home/user/live:/data alpine true"
+expect = "deny"
+
+# credential names and ${HOME}
+[[case]]
+command = "cat ${HOME}/.ssh/id_rsa"
+expect = "deny"
+[[case]]
+command = "cat /tmp/id_rsa"
+expect = "deny"
+
+# the shell splitter
+[[case]]
+command = "echo x >&2x"
+expect = "none"
+[[case]]
+command = "FOO=1"
+expect = "none"
+[[case]]
+command = "timeout -s KILL 5 git push origin x --force"
+expect = "deny"
+[[case]]
+command = "env -- git push origin x --force"
+expect = "deny"
+[[case]]
+command = "timeout"
+expect = "none"
+[[case]]
+command = "echo x >"
+expect = "none"
+[[case]]
+command = "bash -c \"bash -c 'bash -c \\\"bash -c true\\\"'\""
+expect = "none"
+[[case]]
+command = "bash script.sh"
+expect = "none"
+[[case]]
+command = "bash -x -c 'git push origin x --force'"
+expect = "deny"
+[[case]]
+command = "eval git push origin x --force"
+expect = "deny"
+[[case]]
+command = "grep --max-count 3 token notes.txt"
+expect = "none"
+[[case]]
+command = "git config user.name me"
+expect = "none"
+[[case]]
+command = "timeout --preserve-status 5 true"
+expect = "none"
+# Nesting deeper than the guard reads is asked about, never passed unchecked.
+[[case]]
+command = "eval eval eval eval eval eval true"
+expect = "ask"
+[[case]]
+command = "eval eval eval eval eval eval rm -rf /"
+expect = "ask"
+[[case]]
+command = "echo $(echo $(echo $(echo $(echo $(echo $(rm -rf /))))))"
+expect = "deny"
+[[case]]
+command = "eval eval eval eval rm -rf /"
+expect = "deny"
+[[case]]
+command = "podman run --rm --security-opt no-new-privileges alpine true"
+expect = "none"

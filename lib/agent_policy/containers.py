@@ -175,10 +175,8 @@ def mount_finding(source, cwd, home, protected):
     for root in protected:
         if under(path, root) or under(root, path):
             return ("critical", f"mounts {path}, inside the protected deployment {root}")
-    if path == "/" or (under(path, home) and path == home):
-        return ("critical", f"mounts {path}, which contains the whole home folder")
-    if under(home, path):  # a parent of home
-        return ("critical", f"mounts {path}, a parent of the home folder")
+    # The home folder itself, and any folder above it, holds the credential
+    # folders, so credential_target() has already refused it.
     rel = sensitive_home_entry(path, home)
     if rel:
         return ("high", f"mounts {path}, which holds agent or tool state (~/{rel})")
@@ -247,8 +245,6 @@ def run_findings(args, cwd, home, protected=()):
             found.append(
                 ("critical", f"reads an engine secret into the container (--secret {value})")
             )
-        elif name in ("--pids-limit",):
-            continue
     for _flag, source in mount_sources(args):
         finding = mount_finding(source, cwd, home, protected)
         if finding:

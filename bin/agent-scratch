@@ -34,10 +34,9 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-for candidate in (HERE / "lib", HERE.parent / "lib"):
-    if (candidate / "agent_policy").is_dir():
-        sys.path.insert(0, str(candidate))
-        break
+# lib/ sits next to the script once installed, and one level up in a checkout.
+LIB = HERE / "lib" if (HERE / "lib" / "agent_policy").is_dir() else HERE.parent / "lib"
+sys.path.insert(0, str(LIB))
 
 from agent_policy import containers
 
