@@ -144,8 +144,9 @@ uninstall: backup
 	@for home in $(CODEX_HOMES); do rm -f "$$home/rules/agent-policy.rules"; done
 
 # Each installed file against what install would write, as installed path
-# and source pair. A missing file is new (nothing installed there yet), not an
-# error; only a changed one prints its diff.
+# and source pair, plus the agent-scratch link install creates. A missing
+# file is new (nothing installed there yet), not an error; tools/install_diff.py
+# prints the diff only for a changed one, and fails on one it cannot compare.
 DIFF_PAIRS  = $(CLAUDE_MANAGED_DIR)/50-agent-policy.json=dist/claude/50-agent-policy.json
 DIFF_PAIRS += $(CODEX_SYSTEM_DIR)/requirements.toml=dist/codex/requirements.toml
 DIFF_PAIRS += $(foreach home,$(CODEX_HOMES),$(home)/rules/agent-policy.rules=dist/codex/agent-policy.rules)
@@ -153,19 +154,7 @@ DIFF_PAIRS += $(LIBEXEC)/lib/agent_policy=lib/agent_policy
 DIFF_PAIRS += $(LIBEXEC)/guard=hooks/guard $(LIBEXEC)/agent-scratch=bin/agent-scratch
 
 diff: build
-	@new=0; changed=0; same=0; \
-	for pair in $(DIFF_PAIRS); do \
-		installed="$${pair%%=*}"; source="$${pair#*=}"; \
-		if [ ! -e "$$installed" ]; then \
-			echo "  new        $$installed"; new=$$((new + 1)); \
-		elif diff -rq -x __pycache__ "$$installed" "$$source" >/dev/null; then \
-			echo "  unchanged  $$installed"; same=$$((same + 1)); \
-		else \
-			echo "  changed    $$installed"; changed=$$((changed + 1)); \
-			diff -ru -x __pycache__ "$$installed" "$$source" | sed 's/^/      /'; \
-		fi; \
-	done; \
-	echo "diff: $$new new, $$changed changed, $$same unchanged; nothing was installed (make install does that)"
+	@$(PYTHON) tools/install_diff.py $(DIFF_PAIRS) --link $(PREFIX)/bin/agent-scratch=$(LIBEXEC)/agent-scratch
 
 clean:
 	rm -rf dist .coverage .coverage.* coverage.xml

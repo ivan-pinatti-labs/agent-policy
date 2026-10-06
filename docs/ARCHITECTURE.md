@@ -218,6 +218,8 @@ host:
   free of home paths.
 - `tests/test_scratch.py`: `agent-scratch` against a fake `podman` that
   records every call.
+- `tests/test_install_diff.py`: what `make diff` reports for a new, unchanged,
+  changed or unreadable path, and for the `agent-scratch` link.
 - `tests/test_guard_edges.py` and `tests/test_tools_edges.py`: the paths a
   command line alone cannot reach, such as an engine that fails, a hook
   payload of the wrong shape, a tampered backup manifest or an invalid
