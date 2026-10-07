@@ -74,8 +74,16 @@ def evaluate(command, cwd, env=None, inspector=containers.inspect):
 
 
 # Variables a command may set and still be approved: each only picks which
-# account or region an aws read goes to.
-APPROVE_ENV = {"aws": {"AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION", "AWS_PAGER"}}
+# account or region an aws read goes to. AWS_PAGER is not one: it names a
+# program to run.
+APPROVE_ENV = {"aws": {"AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION"}}
+# aws options that change whom a read trusts, so a read carrying one is left
+# to the static rules: --no-verify-ssl turns off certificate checks, and
+# --ca-bundle swaps the certificates they check against.
+AWS_TRUST_OPTIONS = ("--no-verify-ssl", "--ca-bundle")
+# aws options that take no value, besides every --no-* one. A word after one
+# is a positional argument, not its value.
+AWS_FLAGS = {"--debug", "--dry-run", "--cli-auto-prompt"}
 # aws read verbs that still write: each saves what it reads to a local path,
 # its outfile, which the guard does not check. Any bare word after the verb
 # also stops an approval (see _aws_positional), so this list is a backstop
@@ -97,6 +105,8 @@ AWS_READS_THAT_WRITE = {
     "get-thing-shadow",
     "get-clip",
     "get-profile",
+    "get-connection-function",
+    "get-resource-position",
 }
 QUIET_REDIRECTS = ("/dev/null", "/dev/stdout", "/dev/stderr")
 
@@ -150,19 +160,30 @@ def _approval(seg, prefixes, cwd, home):
             and op.startswith(AWS_READ_PREFIXES)
             and op not in AWS_READS_THAT_WRITE
             and not _aws_positional(seg.words, op)
+            and not any(w.split("=", 1)[0] in AWS_TRUST_OPTIONS for w in seg.words)
         ):
             return "read"
     return None
 
 
 def _aws_positional(words, op):
-    """True when a bare word follows the aws verb. Every aws option is
-    `--name value`, so a word that does not follow an option is a positional
-    argument, which for a read verb is an outfile."""
+    """True when a bare word follows the aws verb. An aws option is
+    `--name value` unless it is a flag (AWS_FLAGS or --no-*), so a word that
+    is not an option's value is a positional argument, which for a read verb
+    is an outfile."""
     rest = words[words.index(op) + 1 :]
     return any(
-        not word.startswith("-") and (i == 0 or not rest[i - 1].startswith("--"))
+        not word.startswith("-") and (i == 0 or not _aws_takes_value(rest[i - 1]))
         for i, word in enumerate(rest)
+    )
+
+
+def _aws_takes_value(word):
+    return (
+        word.startswith("--")
+        and "=" not in word
+        and not word.startswith("--no-")
+        and word not in AWS_FLAGS
     )
 
 

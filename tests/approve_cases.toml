@@ -106,6 +106,33 @@ expect = false
 command = "aws ec2 describe-instances --no-paginate"
 expect = true
 [[case]]
+command = "aws ec2 describe-instances --no-paginate --debug --region us-east-1"
+expect = true
+[[case]]
+command = "aws ec2 describe-instances --dry-run out.json"
+expect = false
+[[case]]
+command = "aws ec2 describe-instances --no-paginate out.json"
+expect = false
+[[case]]
+command = "aws ec2 describe-instances --query=Reservations out.json"
+expect = false
+[[case]]
+command = "aws cloudfront get-connection-function --identifier i --no-paginate out.js"
+expect = false
+[[case]]
+command = "aws iotwireless get-resource-position --resource-identifier r --resource-type t --no-paginate out.json"
+expect = false
+[[case]]
+command = "aws ec2 describe-instances --no-verify-ssl"
+expect = false
+[[case]]
+command = "aws ec2 describe-instances --ca-bundle=/tmp/ca.pem"
+expect = false
+[[case]]
+command = "AWS_PAGER=/tmp/reader aws ec2 describe-instances"
+expect = false
+[[case]]
 command = "aws ec2"
 expect = false
 
