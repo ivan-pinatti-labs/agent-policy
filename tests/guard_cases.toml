@@ -32,6 +32,9 @@ expect = "deny"
 command = "git push origin :feature"
 expect = "deny"
 [[case]]
+command = "git push origin :feature --verbose"
+expect = "deny"
+[[case]]
 command = "git push --delete origin feature"
 expect = "deny"
 [[case]]

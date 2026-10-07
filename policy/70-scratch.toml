@@ -12,7 +12,6 @@ agents = ["claude"]
 reason = "The agent scratchpad folder (see bin/agent-scratch)"
 claude = [
   "Edit(~/scratch/**)",
-  "Write(~/scratch/**)",
   "Read(~/scratch/**)",
 ]
 

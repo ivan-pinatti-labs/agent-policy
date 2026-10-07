@@ -106,7 +106,4 @@ claude = [
   "Edit(~/.claude*/.credentials.json)",
   "Edit(~/.codex/auth.json)",
   "Edit(~/.ssh/id_*)",
-  "Write(~/.claude*/.credentials.json)",
-  "Write(~/.codex/auth.json)",
-  "Write(~/.ssh/id_*)",
 ]
