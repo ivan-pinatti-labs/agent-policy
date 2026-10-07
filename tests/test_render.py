@@ -42,6 +42,17 @@ class Render(unittest.TestCase):
         self.assertIn("Bash(*git*push*--force*)", perms["deny"])
         self.assertNotIn("Bash(env *)", perms["allow"])
 
+    def test_no_rule_claude_code_warns_about(self):
+        # File tools match only Edit(...) rules (Edit covers Write). A `:*`
+        # is the old prefix syntax: anywhere but the end it warns, and at the
+        # end it keeps any other `*` literal.
+        for decision in render.DECISIONS:
+            for rule in self.claude["permissions"][decision]:
+                self.assertFalse(rule.startswith("Write("), rule)
+                if rule.startswith("Bash(") and ":*" in rule:
+                    self.assertTrue(rule.endswith(":*)"), rule)
+                    self.assertNotIn("*", rule[5:-3], rule)
+
     def test_no_allow_rule_has_a_wildcard_before_the_subcommand(self):
         # Claude Code warns at every start about an allow rule with a `*`
         # before the rest of the command; the guard approves those forms.
@@ -58,7 +69,7 @@ class Render(unittest.TestCase):
 
     def test_agent_logins_cannot_be_read_or_written_by_file_tools(self):
         deny = self.claude["permissions"]["deny"]
-        for tool in ("Read", "Edit", "Write"):
+        for tool in ("Read", "Edit"):
             for path in ("~/.claude*/.credentials.json", "~/.codex/auth.json", "~/.ssh/id_*"):
                 self.assertIn(f"{tool}({path})", deny)
 
@@ -75,7 +86,7 @@ class Render(unittest.TestCase):
     def test_the_scratchpad_by_default(self):
         perms = self.claude["permissions"]
         self.assertEqual(["~/scratch"], perms["additionalDirectories"])
-        self.assertIn("Write(~/scratch/**)", perms["allow"])
+        self.assertIn("Edit(~/scratch/**)", perms["allow"])
         self.assertIn("Bash(agent-scratch *)", perms["allow"])
         self.assertIn("agent-scratch", self.rules_file.read_text())
 

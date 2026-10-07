@@ -56,7 +56,9 @@ claude = [
   "Bash(*git*push*--mirror*)",
   "Bash(*git*push*--delete*)",
   "Bash(*git*push* -d *)",
-  "Bash(*git*push* :*)",
+  # No rule for a deleting refspec (`git push origin :main`): Claude Code
+  # reads a `:*` as its old prefix syntax or warns about it anywhere else,
+  # so the guard alone refuses that form (tests/guard_cases.toml).
   "Bash(*git*push* +*)",
   "Bash(*git filter-branch*)",
   "Bash(*git filter-repo*)",
