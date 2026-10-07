@@ -311,6 +311,51 @@ expect = "none"
 [[case]]
 command = "ls ~/.ssh"
 expect = "none"
+[[case]]
+command = "sed -n 1p ~/.claude/.credentials.json"
+expect = "deny"
+
+# Claude Code's tool-results files (large tool output it saves and tells the
+# agent to read) are readable; the rest of ~/.claude stays a credential path.
+[[case]]
+command = "grep -n error ~/.claude/projects/-work-project/0123-abcd/tool-results/b1.txt"
+expect = "none"
+[[case]]
+command = "head -50 ~/.claude/projects/-work-project/0123-abcd/tool-results/b1.txt"
+expect = "none"
+[[case]]
+command = "sed -n 100,200p ~/.claude-work/projects/-work-project/0123-abcd/tool-results/b1.txt"
+expect = "none"
+[[case]]
+command = "wc -l < ~/.claude/projects/-work-project/0123-abcd/tool-results/b1.txt"
+expect = "none"
+[[case]]
+command = "cat ~/.claude/projects/-work-project/0123-abcd/tool-results/../../../../.credentials.json"
+expect = "deny"
+[[case]]
+command = "cat ~/.claude/projects/-work-project/0123-abcd/tool-results/.credentials.json"
+expect = "deny"
+[[case]]
+command = "grep token ~/.claude/projects/-work-project/0123-abcd.jsonl"
+expect = "deny"
+[[case]]
+command = "grep -r token ~/.claude/projects"
+expect = "deny"
+[[case]]
+command = "cat ~/.claude/tool-results/b1.txt"
+expect = "deny"
+[[case]]
+command = "sed -i s/a/b/ ~/.claude/projects/-work-project/0123-abcd/tool-results/b1.txt"
+expect = "deny"
+[[case]]
+command = "echo x > ~/.claude/projects/-work-project/0123-abcd/tool-results/b1.txt"
+expect = "deny"
+[[case]]
+command = "podman run --rm -v ~/.claude/projects/-work-project/0123-abcd/tool-results:/r debian:13-slim true"
+expect = "deny"
+[[case]]
+command = "rm -rf ~/.claude/projects/-work-project/0123-abcd/tool-results"
+expect = "deny"
 
 # Red-team: writing files that run as code, or credentials (critical)
 [[case]]
@@ -905,14 +950,17 @@ expect = "deny"
 command = "git --exec-path"
 expect = "none"
 
-# Claude Code's memory notes are read like any notes; the rest of the
-# login's folder is still a credential, and so is writing the notes.
+# Claude Code's memory notes are read like any notes; the folder itself,
+# the rest of the login's folder, and writing the notes are still refused.
 [[case]]
 command = "cat /home/user/.claude/projects/p/memory/MEMORY.md"
 expect = "none"
 [[case]]
-command = "grep -r topic /home/user/.claude-personal/projects/p/memory"
+command = "grep topic /home/user/.claude-personal/projects/p/memory/note.md"
 expect = "none"
+[[case]]
+command = "grep -r topic /home/user/.claude-personal/projects/p/memory"
+expect = "deny"
 [[case]]
 command = "head -5 < /home/user/.claude/projects/p/memory/note.md"
 expect = "none"

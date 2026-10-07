@@ -81,9 +81,14 @@ A new tool gets its own file.
   (`~/.ssh`, `~/.aws`, `~/.config/gh`, `~/.claude*`, a `.pem`...) through any
   command is critical, and so is writing a credential file, a shell startup
   file, a git hook, or anything on PATH. These override the broad `allow` on
-  readers like `cat` and writers like `cp`. Claude Code's memory notes
-  (`~/.claude*/projects/<project>/memory`) are the one part of its folder
-  that may be read, since they hold no login; writing them is still refused.
+  readers like `cat` and writers like `cp`. One read is exempt: Claude Code
+  saves a tool output too large to show inline under
+  `~/.claude*/projects/<project>/<session>/tool-results/` and tells the agent
+  to read it there, so reading a file in that folder is allowed. The folder
+  itself is not: a recursive read that follows links (`grep -R`) could walk
+  out of it. Writing, mounting or removing it is still critical. The same
+  holds for Claude Code's memory notes, the files under
+  `~/.claude*/projects/<project>/memory/`: an agent reads its own back.
 
 ## Rule format
 

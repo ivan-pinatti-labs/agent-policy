@@ -115,31 +115,40 @@ def has_unexpanded(source):
     return "$" in source or "`" in source
 
 
-def agent_memory(path, home):
-    """True for Claude Code's memory notes, ~/.claude*/projects/<project>/memory
-    and below. They sit inside the login's folder but hold no credential, and
-    an agent reads its own back, so a read there is not a credential read.
-    Writing them is still refused like any write under that folder."""
-    if not under(path, home):
-        return False
-    parts = os.path.relpath(path, home).split(os.sep)
-    return (
-        len(parts) >= 4
-        and parts[0].startswith(tuple(CREDENTIAL_PREFIXES))
-        and parts[1] == "projects"
-        and parts[3] == "memory"
-    )
+def memory_note(rel):
+    """Whether `rel` (relative to $HOME, in a Claude Code profile folder) is
+    in a project's memory folder, projects/<project>/memory, where Claude Code
+    keeps the notes an agent writes for itself and reads back. They hold no
+    credential."""
+    parts = rel.split(os.sep)
+    return len(parts) >= 5 and parts[1] == "projects" and parts[3] == "memory"
 
 
-def credential_target(path, home):
-    """The credential location `path` (absolute) reads or writes, or None."""
+def tool_output(rel):
+    """Whether `rel` (relative to $HOME, in a Claude Code profile folder) is
+    in a tool-results folder: projects/<project>/<session>/tool-results, where
+    Claude Code saves a tool output too large to show inline and tells the
+    agent to read it. It holds only what the agent already ran and saw a
+    preview of."""
+    parts = rel.split(os.sep)
+    return len(parts) >= 5 and parts[1] == "projects" and parts[4] == "tool-results"
+
+
+def credential_target(path, home, reading=False):
+    """The credential location `path` (absolute) reads or writes, or None.
+    With `reading`, a read of a Claude Code tool output file or memory note
+    is not one. A folder is never exempt: a recursive read that follows links
+    (`grep -R`, `rg -L`, `zip -r`) could walk out of it to a credential."""
     for rel in CREDENTIAL_DIRS:
         full = os.path.join(home, rel)
         if under(path, full) or under(full, path):
             return f"~/{rel}"
     if under(path, home) and path != home:
-        top = os.path.relpath(path, home).split(os.sep, 1)[0]
-        if any(top.startswith(p) for p in CREDENTIAL_PREFIXES):
+        rel = os.path.relpath(path, home)
+        top = rel.split(os.sep, 1)[0]
+        if any(top.startswith(p) for p in CREDENTIAL_PREFIXES) and not (
+            reading and (tool_output(rel) or memory_note(rel)) and not os.path.isdir(path)
+        ):
             return f"~/{top}"
     for rel in CREDENTIAL_FILES:
         if path == os.path.join(home, rel):

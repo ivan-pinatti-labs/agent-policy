@@ -229,6 +229,7 @@ READERS = {
     "rg",
     "awk",
     "gawk",
+    "sed",
     "sort",
     "uniq",
     "column",
@@ -286,8 +287,8 @@ def _redirects(seg, ctx):
             continue
         path = containers.expand(target, ctx["cwd"], ctx["home"])
         if op in INPUT_REDIRECTS:
-            cred = containers.credential_target(path, ctx["home"])
-            if cred and not containers.agent_memory(path, ctx["home"]):
+            cred = containers.credential_target(path, ctx["home"], reading=True)
+            if cred:
                 yield Finding(
                     "critical", f"reads {cred} through a redirect, which holds credentials"
                 )
@@ -498,8 +499,8 @@ def _reader(seg, ctx):
             yield Finding("high", f"{seg.name} reads {token}, a path this guard cannot resolve")
             continue
         path = containers.expand(token, ctx["cwd"], ctx["home"])
-        cred = containers.credential_target(path, ctx["home"])
-        if cred and not containers.agent_memory(path, ctx["home"]):
+        cred = containers.credential_target(path, ctx["home"], reading=True)
+        if cred:
             yield Finding("critical", f"{seg.name} reads {cred}, which holds credentials")
 
 
