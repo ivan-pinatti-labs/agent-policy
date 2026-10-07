@@ -76,9 +76,23 @@ def evaluate(command, cwd, env=None, inspector=containers.inspect):
 # Variables a command may set and still be approved: each only picks which
 # account or region an aws read goes to.
 APPROVE_ENV = {"aws": {"AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION", "AWS_PAGER"}}
-# aws read verbs that still write: get-object saves the object to a local
-# path the guard does not check.
-AWS_READS_THAT_WRITE = {"get-object", "get-object-torrent"}
+# aws read verbs that still write: each saves what it reads to a local path,
+# its outfile, which the guard does not check. Any bare word after the verb
+# also stops an approval (see _aws_positional), so this list is a backstop
+# for the outfile written after a flag that takes no value.
+AWS_READS_THAT_WRITE = {
+    "get-object",
+    "get-object-torrent",
+    "get-job-output",
+    "get-media",
+    "get-media-for-fragment-list",
+    "get-export",
+    "get-sdk",
+    "get-snapshot-block",
+    "get-package-version-asset",
+    "get-raw-message-content",
+    "get-work-unit-results",
+}
 QUIET_REDIRECTS = ("/dev/null", "/dev/stdout", "/dev/stderr")
 
 
@@ -126,9 +140,25 @@ def _approval(seg, prefixes, cwd, home):
         return "read" if _allowed_prefix(words, prefixes) else None
     if seg.name == "aws":
         _, op = _aws_service_op(seg.words[1:])
-        if op and op.startswith(AWS_READ_PREFIXES) and op not in AWS_READS_THAT_WRITE:
+        if (
+            op
+            and op.startswith(AWS_READ_PREFIXES)
+            and op not in AWS_READS_THAT_WRITE
+            and not _aws_positional(seg.words, op)
+        ):
             return "read"
     return None
+
+
+def _aws_positional(words, op):
+    """True when a bare word follows the aws verb. Every aws option is
+    `--name value`, so a word that does not follow an option is a positional
+    argument, which for a read verb is an outfile."""
+    rest = words[words.index(op) + 1 :]
+    return any(
+        not word.startswith("-") and (i == 0 or not rest[i - 1].startswith("--"))
+        for i, word in enumerate(rest)
+    )
 
 
 def _allowed_prefix(words, prefixes):
