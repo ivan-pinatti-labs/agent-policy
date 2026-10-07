@@ -127,7 +127,9 @@ def tool_output(rel):
 
 def credential_target(path, home, reading=False):
     """The credential location `path` (absolute) reads or writes, or None.
-    With `reading`, a read of a Claude Code tool output is not one."""
+    With `reading`, a read of a Claude Code tool output file is not one. A
+    folder is never exempt: a recursive read that follows links (`grep -R`,
+    `rg -L`, `zip -r`) could walk out of it to a credential."""
     for rel in CREDENTIAL_DIRS:
         full = os.path.join(home, rel)
         if under(path, full) or under(full, path):
@@ -136,7 +138,7 @@ def credential_target(path, home, reading=False):
         rel = os.path.relpath(path, home)
         top = rel.split(os.sep, 1)[0]
         if any(top.startswith(p) for p in CREDENTIAL_PREFIXES) and not (
-            reading and tool_output(rel)
+            reading and tool_output(rel) and not os.path.isdir(path)
         ):
             return f"~/{top}"
     for rel in CREDENTIAL_FILES:

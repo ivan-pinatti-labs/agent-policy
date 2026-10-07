@@ -84,8 +84,9 @@ A new tool gets its own file.
   readers like `cat` and writers like `cp`. One read is exempt: Claude Code
   saves a tool output too large to show inline under
   `~/.claude*/projects/<project>/<session>/tool-results/` and tells the agent
-  to read it there, so reading that folder is allowed. Writing, mounting or
-  removing it is still critical.
+  to read it there, so reading a file in that folder is allowed. The folder
+  itself is not: a recursive read that follows links (`grep -R`) could walk
+  out of it. Writing, mounting or removing it is still critical.
 
 ## Rule format
 

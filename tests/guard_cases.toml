@@ -330,9 +330,6 @@ expect = "none"
 command = "wc -l < ~/.claude/projects/-work-project/0123-abcd/tool-results/b1.txt"
 expect = "none"
 [[case]]
-command = "grep -rn error ~/.claude/projects/-work-project/0123-abcd/tool-results"
-expect = "none"
-[[case]]
 command = "cat ~/.claude/projects/-work-project/0123-abcd/tool-results/../../../../.credentials.json"
 expect = "deny"
 [[case]]
