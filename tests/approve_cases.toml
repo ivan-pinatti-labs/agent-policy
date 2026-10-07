@@ -94,6 +94,15 @@ expect = false
 command = "aws apigateway get-export --rest-api-id a --stage-name s --export-type t --no-paginate out.json"
 expect = false
 [[case]]
+command = "aws appconfig get-configuration --application a --environment e --configuration c --client-id i --no-paginate out.json"
+expect = false
+[[case]]
+command = "aws appconfigdata get-latest-configuration --configuration-token t --no-paginate out.json"
+expect = false
+[[case]]
+command = "aws iot-data get-thing-shadow --thing-name t --no-paginate out.json"
+expect = false
+[[case]]
 command = "aws ec2 describe-instances --no-paginate"
 expect = true
 [[case]]

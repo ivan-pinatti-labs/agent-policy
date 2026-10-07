@@ -3,6 +3,8 @@
   "language": "en",
   "ignorePaths": [".secrets.baseline"],
   "words": [
+    "appconfig",
+    "appconfigdata",
     "argjson",
     "artifacthub",
     "askpass",

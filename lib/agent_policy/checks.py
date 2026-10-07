@@ -92,6 +92,11 @@ AWS_READS_THAT_WRITE = {
     "get-package-version-asset",
     "get-raw-message-content",
     "get-work-unit-results",
+    "get-configuration",
+    "get-latest-configuration",
+    "get-thing-shadow",
+    "get-clip",
+    "get-profile",
 }
 QUIET_REDIRECTS = ("/dev/null", "/dev/stdout", "/dev/stderr")
 
