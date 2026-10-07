@@ -65,6 +65,16 @@ class Symlinks(unittest.TestCase):
         (self.project / "key").symlink_to(self.home / ".ssh" / "id_ed25519")
         (self.project / "rc").symlink_to(self.home / ".bashrc")
         (self.project / "notes.md").write_text("")
+        (self.home / ".claude").mkdir()
+        (self.home / ".claude" / ".credentials.json").write_text("secret")
+        session = self.home / ".claude" / "projects" / "-project" / "session"
+        session.mkdir(parents=True)
+        (session / "tool-results").symlink_to(self.home / ".claude")
+        # A real tool-results folder, holding an output and a link out of it.
+        results = self.home / ".claude" / "projects" / "-project" / "other" / "tool-results"
+        results.mkdir(parents=True)
+        (results / "b1.txt").write_text("output")
+        (results / "out").symlink_to(self.home / ".claude" / ".credentials.json")
         self.env = {"HOME": str(self.home), "XDG_CONFIG_HOME": "/nonexistent"}
 
     def tearDown(self):
@@ -79,6 +89,19 @@ class Symlinks(unittest.TestCase):
     def test_reading_through_a_link(self):
         self.assertEqual("deny", self.decide("cat key"))
         self.assertEqual("deny", self.decide("base64 < ./key"))
+
+    def test_tool_results_link_to_credentials(self):
+        results = "~/.claude/projects/-project/session/tool-results"
+        self.assertEqual("deny", self.decide(f"grep x {results}/.credentials.json"))
+        self.assertEqual("deny", self.decide(f"cat {results}/x"))
+
+    def test_tool_results_files_but_not_the_folder(self):
+        results = "~/.claude/projects/-project/other/tool-results"
+        self.assertEqual("none", self.decide(f"grep -n output {results}/b1.txt"))
+        self.assertEqual("deny", self.decide(f"cat {results}/out"))
+        # grep -R follows the link inside; the folder itself stays refused.
+        self.assertEqual("deny", self.decide(f"grep -R token {results}"))
+        self.assertEqual("deny", self.decide(f"grep -rn token {results}/"))
 
     def test_writing_through_a_link(self):
         self.assertEqual("deny", self.decide("echo x >> rc"))
