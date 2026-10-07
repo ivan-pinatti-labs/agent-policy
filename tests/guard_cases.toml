@@ -935,3 +935,47 @@ expect = "deny"
 [[case]]
 command = "podman run --rm --security-opt no-new-privileges alpine true"
 expect = "none"
+
+# git --exec-path: the folder git runs its helpers from
+[[case]]
+command = "git --exec-path=/tmp/x fetch"
+expect = "deny"
+[[case]]
+command = "git -C /work/other --exec-path=/tmp/x status"
+expect = "deny"
+[[case]]
+command = "GIT_EXEC_PATH=/tmp/x git fetch"
+expect = "deny"
+[[case]]
+command = "git --exec-path"
+expect = "none"
+
+# Claude Code's memory notes are read like any notes; the folder itself,
+# the rest of the login's folder, and writing the notes are still refused.
+[[case]]
+command = "cat /home/user/.claude/projects/p/memory/MEMORY.md"
+expect = "none"
+[[case]]
+command = "grep topic /home/user/.claude-personal/projects/p/memory/note.md"
+expect = "none"
+[[case]]
+command = "grep -r topic /home/user/.claude-personal/projects/p/memory"
+expect = "deny"
+[[case]]
+command = "head -5 < /home/user/.claude/projects/p/memory/note.md"
+expect = "none"
+[[case]]
+command = "cat /home/user/.claude/projects/p/session.jsonl"
+expect = "deny"
+[[case]]
+command = "cat /home/user/.claude/projects/p/memory/../../../.credentials.json"
+expect = "deny"
+[[case]]
+command = "cat /home/user/.claude/projects/memory"
+expect = "deny"
+[[case]]
+command = "cat /home/user/.claude/notes/p/memory/a.md"
+expect = "deny"
+[[case]]
+command = "tee /home/user/.claude/projects/p/memory/note.md"
+expect = "deny"

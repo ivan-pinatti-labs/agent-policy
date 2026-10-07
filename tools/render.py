@@ -4,6 +4,9 @@
 
   dist/claude/50-agent-policy.json   a managed-settings.d drop-in:
                                       permissions + the guard hook
+  dist/claude/guard-allow.json       the prefixes the static rules allow,
+                                      which the guard reads to approve
+                                      `git -C <dir> ...` (approve())
   dist/codex/agent-policy.rules      Codex prefix_rule()s
   dist/codex/requirements.toml       the guard hook for /etc/codex
 
@@ -118,10 +121,14 @@ def expand(prefix):
     return [list(words) for words in itertools.product(*choices)]
 
 
-def claude_bash(words):
+def claude_bash(words, decision):
+    """The Claude rules for one prefix. git gets a `git -C *` form too, but
+    only to ask or deny: an allow with a `*` before the subcommand would
+    also allow any option put there, so Claude Code warns about it, and the
+    guard allows `git -C <dir> ...` itself instead."""
     text = " ".join(words)
     out = [f"Bash({text})", f"Bash({text} *)"]
-    if words[0] == "git" and len(words) > 1:
+    if words[0] == "git" and len(words) > 1 and decision != "allow":
         rest = " ".join(words[1:])
         out += [f"Bash(git -C * {rest})", f"Bash(git -C * {rest} *)"]
     return out
@@ -132,12 +139,23 @@ def claude_rules(rules):
     for rule in rules:
         if "claude" not in rule["agents"]:
             continue
-        bucket = perms[decision_of(rule)]
+        decision = decision_of(rule)
+        bucket = perms[decision]
         for prefix in rule["prefix"]:
             for words in expand(prefix):
-                bucket.extend(claude_bash(words))
+                bucket.extend(claude_bash(words, decision))
         bucket.extend(rule["claude"])
     return {d: list(dict.fromkeys(v)) for d, v in perms.items()}
+
+
+def guard_allow(rules):
+    """The Claude allow prefixes, as word lists, for the guard's approve()."""
+    out = []
+    for rule in rules:
+        if "claude" in rule["agents"] and decision_of(rule) == "allow":
+            for prefix in rule["prefix"]:
+                out.extend(w for w in expand(prefix) if w not in out)
+    return {"prefixes": out}
 
 
 def render_claude(rules, libexec, scratch=True):
@@ -151,7 +169,9 @@ def render_claude(rules, libexec, scratch=True):
                     "hooks": [
                         {
                             "type": "command",
-                            "command": f"{libexec}/guard --agent claude",
+                            "command": (
+                                f"{libexec}/guard --agent claude --allow {libexec}/guard-allow.json"
+                            ),
                             "timeout": 10,
                         }
                     ],
@@ -280,6 +300,7 @@ def main(argv=None):
         if sandbox_cfg.get("install"):
             claude["sandbox"] = sandbox
     (out / "claude" / "50-agent-policy.json").write_text(json.dumps(claude, indent=2) + "\n")
+    (out / "claude" / "guard-allow.json").write_text(json.dumps(guard_allow(rules)) + "\n")
     (out / "codex" / "agent-policy.rules").write_text(render_codex_rules(rules))
     (out / "codex" / "requirements.toml").write_text(render_codex_requirements(args.libexec))
     counts = ", ".join(f"{d} {len(claude['permissions'][d])}" for d in DECISIONS)

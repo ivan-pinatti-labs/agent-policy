@@ -1,0 +1,169 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# What approve() (lib/agent_policy/checks.py) lets the guard allow on its
+# own, against the prefixes the policy in this checkout allows. expect: true
+# when the guard answers allow, false when it leaves the decision to the
+# static rules. cwd is /work/project and HOME is /home/user, as in
+# guard_cases.toml.
+
+# git -C <dir>: the static rules would allow the rest
+[[case]]
+command = "git -C /work/other status"
+expect = true
+[[case]]
+command = "git -C /work/other log -n 5"
+expect = true
+[[case]]
+command = "git -C ../a -C b diff --stat"
+expect = true
+[[case]]
+command = "git -C /work/other push -u origin feature"
+expect = true
+[[case]]
+command = "git -C /work/other status 2>/dev/null"
+expect = true
+[[case]]
+command = "git -C /work/other status && git -C /work/other log | head -5"
+expect = true
+
+# aws: a read verb after any service
+[[case]]
+command = "aws ec2 describe-instances"
+expect = true
+[[case]]
+command = "aws --region us-east-1 --output json rds list-tags-for-resource --resource-name x"
+expect = true
+[[case]]
+command = "AWS_PROFILE=dev aws iam get-role --role-name x"
+expect = true
+[[case]]
+command = "aws s3api head-object --bucket b --key k"
+expect = true
+
+# The static rules allow these as written, so the guard stays silent.
+[[case]]
+command = "git status"
+expect = false
+[[case]]
+command = "aws sts get-caller-identity"
+expect = false
+
+# A finding wins.
+[[case]]
+command = "git -C /work/other push --force origin main"
+expect = false
+[[case]]
+command = "git -C /work/other --exec-path=/tmp/x status"
+expect = false
+[[case]]
+command = "git -C /work/other -c core.pager=x log"
+expect = false
+[[case]]
+command = "git -C /work/other reset --hard"
+expect = false
+[[case]]
+command = "aws secretsmanager get-secret-value --secret-id x"
+expect = false
+[[case]]
+command = "aws ssm get-parameter --name x --with-decryption"
+expect = false
+
+# Nothing the static rules would not allow.
+[[case]]
+command = "git -C /work/other clean -n"
+expect = false
+[[case]]
+command = "git -C /work/other status && rm -rf build"
+expect = false
+[[case]]
+command = "aws ec2 run-instances --image-id x"
+expect = false
+[[case]]
+command = "aws s3api get-object --bucket b --key k /home/user/.bashrc"
+expect = false
+[[case]]
+command = "aws glacier get-job-output --account-id - --vault-name v --job-id j out.json"
+expect = false
+[[case]]
+command = "aws kinesis-video-media get-media --stream-name s --start-selector x out.mkv"
+expect = false
+[[case]]
+command = "aws kinesis-video-archived-media get-media-for-fragment-list --fragments f out"
+expect = false
+[[case]]
+command = "aws apigateway get-export --rest-api-id a --stage-name s --export-type t --no-paginate out.json"
+expect = false
+[[case]]
+command = "aws appconfig get-configuration --application a --environment e --configuration c --client-id i --no-paginate out.json"
+expect = false
+[[case]]
+command = "aws appconfigdata get-latest-configuration --configuration-token t --no-paginate out.json"
+expect = false
+[[case]]
+command = "aws iot-data get-thing-shadow --thing-name t --no-paginate out.json"
+expect = false
+[[case]]
+command = "aws ec2 describe-instances --no-paginate"
+expect = true
+[[case]]
+command = "aws ec2 describe-instances --no-paginate --debug --region us-east-1"
+expect = true
+[[case]]
+command = "aws ec2 describe-instances --dry-run out.json"
+expect = false
+[[case]]
+command = "aws ec2 describe-instances --no-paginate out.json"
+expect = false
+[[case]]
+command = "aws ec2 describe-instances --query=Reservations out.json"
+expect = false
+[[case]]
+command = "aws cloudfront get-connection-function --identifier i --no-paginate out.js"
+expect = false
+[[case]]
+command = "aws iotwireless get-resource-position --resource-identifier r --resource-type t --no-paginate out.json"
+expect = false
+[[case]]
+command = "aws ec2 describe-instances --no-verify-ssl"
+expect = false
+[[case]]
+command = "aws ec2 describe-instances --ca-bundle=/tmp/ca.pem"
+expect = false
+[[case]]
+command = "AWS_PAGER=/tmp/reader aws ec2 describe-instances"
+expect = false
+[[case]]
+command = "aws ec2"
+expect = false
+
+# Forms the guard does not vouch for.
+[[case]]
+command = "git -C /home/user/.ssh log"
+expect = false
+[[case]]
+command = "git -C $DIR status"
+expect = false
+[[case]]
+command = "git -C /work/other status > out.txt"
+expect = false
+[[case]]
+command = "sudo git -C /work/other status"
+expect = false
+[[case]]
+command = "/usr/bin/git -C /work/other status"
+expect = false
+[[case]]
+command = "FOO=1 git -C /work/other status"
+expect = false
+[[case]]
+command = "AWS_PROFILE=dev git -C /work/other status"
+expect = false
+[[case]]
+command = "git -C"
+expect = false
+[[case]]
+command = "git -C /work/other status \""
+expect = false
+[[case]]
+command = "> out.txt"
+expect = false

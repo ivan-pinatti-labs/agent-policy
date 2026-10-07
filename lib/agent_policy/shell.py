@@ -71,6 +71,8 @@ class Segment:
     # (operator, target) pairs, such as (">", "out.txt") or ("<", "in"),
     # taken out of words so a redirect target is never read as an argument.
     redirects: list = field(default_factory=list)
+    # True when a wrapper (sudo, env, xargs...) was peeled off the front.
+    wrapped: bool = False
 
     @property
     def name(self):
@@ -140,8 +142,8 @@ def _tokens(text):
 
 
 def _unwrap(words):
-    """Drop leading assignments and wrappers; return (words, env)."""
-    env = {}
+    """Drop leading assignments and wrappers; return (words, env, wrapped)."""
+    env, wrapped = {}, False
     words = list(words)
     changed = True
     while words and changed:
@@ -155,6 +157,7 @@ def _unwrap(words):
         head = words[0].rsplit("/", 1)[-1]
         if head in WRAPPERS:
             words.pop(0)
+            wrapped = True
             takes_value = WRAPPERS[head]
             while words and words[0].startswith("-") and words[0] != "--":
                 flag = words.pop(0)
@@ -166,7 +169,7 @@ def _unwrap(words):
                 if words:
                     words.pop(0)
             changed = True
-    return words, env
+    return words, env, wrapped
 
 
 REDIRECT = re.compile(r"^(\d*)(>>|>\||<<<|<<|<>|>|<)(.*)$")
@@ -206,9 +209,9 @@ def segments(command, _depth=0):
         if token and set(token) <= OPERATOR_CHARS:
             if current:
                 plain, redirects = _split_redirects(current)
-                words, env = _unwrap(plain)
+                words, env, wrapped = _unwrap(plain)
                 if words or redirects:
-                    seg = Segment(words, env, redirects)
+                    seg = Segment(words, env, redirects, wrapped)
                     yield seg
                     nested = _nested_script(seg)
                     if nested is not None:

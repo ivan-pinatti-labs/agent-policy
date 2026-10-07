@@ -139,6 +139,30 @@ class HookPayloads(unittest.TestCase):
                 loader.exec_module(module)
                 self.assertTrue(callable(module.main))
 
+    def test_an_allow_file_it_cannot_use_approves_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            allow = Path(tmp) / "guard-allow.json"
+            for name, content in (
+                ("missing", None),
+                ("not json", "{"),
+                ("not an object", "[]"),
+                ("no list", '{"prefixes": "git status"}'),
+                ("bad entries", '{"prefixes": [[], "git", [1], ["git", 2]]}'),
+            ):
+                with self.subTest(allow=name):
+                    allow.unlink(missing_ok=True)
+                    if content is not None:
+                        allow.write_text(content)
+                    proc = subprocess.run(
+                        [sys.executable, str(ROOT / "hooks" / "guard"), "--allow", str(allow)],
+                        input=json.dumps({"tool_input": {"command": "git -C /x status"}}),
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                        env=dict(os.environ, HOME="/home/user"),
+                    )
+                    self.assertEqual("", proc.stdout)
+
     def test_no_command_is_no_opinion(self):
         self.assertIsNone(self.run_hook({"tool_input": {}}))
         self.assertIsNone(self.run_hook({"tool_input": {"command": "   "}}))

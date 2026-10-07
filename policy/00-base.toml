@@ -7,7 +7,7 @@
 #   reason   = "one line, shown to Codex as the justification"
 #   agents   = ["claude", "codex"]   # optional, default both
 #   prefix   = [["git", ["status", "log"]], ["git", "diff"]]
-#   claude   = ["Bash(aws * describe-*)", "WebFetch(domain:example.org)"]
+#   claude   = ["Bash(*aws * create-*)", "WebFetch(domain:example.org)"]
 #
 # severity is the one scale for everything the policy lists; the agent's
 # decision follows from it (docs/POLICY.md):

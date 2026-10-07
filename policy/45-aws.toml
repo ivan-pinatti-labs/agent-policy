@@ -15,12 +15,10 @@ prefix = [
   ["aws", "logs", ["tail", "filter-log-events", "get-log-events"]],
   ["eksctl", ["get", "describe"]],
 ]
-claude = [
-  "Bash(aws * describe-*)",
-  "Bash(aws * list-*)",
-  "Bash(aws * get-*)",
-  "Bash(aws s3api head-*)",
-]
+# A read verb after any service (`aws ec2 describe-instances`) is allowed by
+# the guard (approve() in lib/agent_policy/checks.py): a rule for it needs a
+# `*` before the verb, which Claude Code warns about.
+claude = ["Bash(aws s3api head-*)"]
 
 [[rule]]
 severity = "high"
