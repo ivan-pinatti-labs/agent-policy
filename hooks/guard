@@ -12,6 +12,11 @@ cwd) and answers only when lib/agent_policy/checks.py finds something:
         asking, so for Codex an ask becomes a deny that says approval is
         needed.
 
+  allow Claude Code only, and only with --allow: a command the static
+        rules would allow but for `git -C <dir>` or an aws read verb, which
+        they cannot express without a wildcard Claude Code warns about
+        (approve() in checks.py). Every deny and ask rule still applies.
+
 Silence means no opinion: the static rules (policy/*.toml) decide.
 """
 
@@ -25,7 +30,7 @@ HERE = Path(__file__).resolve().parent
 LIB = HERE / "lib" if (HERE / "lib" / "agent_policy").is_dir() else HERE.parent / "lib"
 sys.path.insert(0, str(LIB))
 
-from agent_policy.checks import evaluate
+from agent_policy.checks import approve, evaluate
 
 # A hook that crashes reports a non-blocking error, and the command runs
 # unchecked; so every failure to check is answered with a refusal instead.
@@ -54,10 +59,31 @@ def respond(decision, reason):
     )
 
 
+def option(argv, name, default=None):
+    if name in argv and argv.index(name) + 1 < len(argv):
+        return argv[argv.index(name) + 1]
+    return default
+
+
+def load_allowed(path):
+    """The allowed prefixes tools/render.py wrote, or none. A file that is
+    missing or unreadable approves nothing, which leaves every decision to
+    the static rules: a prompt, never a command let through."""
+    if path is None:
+        return []
+    try:
+        prefixes = json.loads(Path(path).read_text()).get("prefixes")
+    except (OSError, ValueError, AttributeError):
+        return []
+    if not isinstance(prefixes, list):
+        return []
+    return [p for p in prefixes if isinstance(p, list) and p and all(isinstance(w, str) for w in p)]
+
+
 def main(argv):
-    agent = "claude"
-    if "--agent" in argv and argv.index("--agent") + 1 < len(argv):
-        agent = argv[argv.index("--agent") + 1]
+    agent = option(argv, "--agent", "claude")
+    # Codex is never approved: its allow runs a command outside its sandbox.
+    allowed = load_allowed(option(argv, "--allow")) if agent == "claude" else []
     try:
         payload = json.load(sys.stdin)
     except ValueError:
@@ -72,10 +98,18 @@ def main(argv):
             respond("deny", UNCHECKED)
         return 0
     cwd = payload.get("cwd")
+    cwd = cwd if isinstance(cwd, str) and cwd else os.getcwd()
+    # Plan mode is read only, so nothing is approved there.
+    if payload.get("permission_mode") == "plan":
+        allowed = []
     try:
-        finding = evaluate(command, cwd if isinstance(cwd, str) and cwd else os.getcwd())
+        finding = evaluate(command, cwd)
+        approved = finding is None and approve(command, cwd, allowed)
     except Exception:
         respond("deny", UNCHECKED)
+        return 0
+    if approved:
+        respond("allow", "agent-policy: allowed once the guard read past git -C or an aws service")
         return 0
     if finding is None:
         return 0

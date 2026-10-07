@@ -123,6 +123,7 @@ install: backup
 	sudo install -m 0644 lib/agent_policy/*.py $(LIBEXEC)/lib/agent_policy/
 	sudo ln -sf $(LIBEXEC)/agent-scratch $(PREFIX)/bin/agent-scratch
 	sudo install -m 0644 dist/claude/50-agent-policy.json $(CLAUDE_MANAGED_DIR)/
+	sudo install -m 0644 dist/claude/guard-allow.json $(LIBEXEC)/
 	@if [ -e $(CODEX_SYSTEM_DIR)/requirements.toml ] && \
 		! grep -q 'Managed by agent-policy' $(CODEX_SYSTEM_DIR)/requirements.toml; then \
 		echo "install: $(CODEX_SYSTEM_DIR)/requirements.toml exists and is not ours;"; \
@@ -152,6 +153,7 @@ DIFF_PAIRS += $(CODEX_SYSTEM_DIR)/requirements.toml=dist/codex/requirements.toml
 DIFF_PAIRS += $(foreach home,$(CODEX_HOMES),$(home)/rules/agent-policy.rules=dist/codex/agent-policy.rules)
 DIFF_PAIRS += $(LIBEXEC)/lib/agent_policy=lib/agent_policy
 DIFF_PAIRS += $(LIBEXEC)/guard=hooks/guard $(LIBEXEC)/agent-scratch=bin/agent-scratch
+DIFF_PAIRS += $(LIBEXEC)/guard-allow.json=dist/claude/guard-allow.json
 
 diff: build
 	@$(PYTHON) tools/install_diff.py $(DIFF_PAIRS) --link $(PREFIX)/bin/agent-scratch=$(LIBEXEC)/agent-scratch

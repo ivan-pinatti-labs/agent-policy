@@ -81,7 +81,9 @@ A new tool gets its own file.
   (`~/.ssh`, `~/.aws`, `~/.config/gh`, `~/.claude*`, a `.pem`...) through any
   command is critical, and so is writing a credential file, a shell startup
   file, a git hook, or anything on PATH. These override the broad `allow` on
-  readers like `cat` and writers like `cp`.
+  readers like `cat` and writers like `cp`. Claude Code's memory notes
+  (`~/.claude*/projects/<project>/memory`) are the one part of its folder
+  that may be read, since they hold no login; writing them is still refused.
 
 ## Rule format
 
@@ -102,9 +104,14 @@ claude = ["Bash(*git reset --hard origin/*)"]   # Claude only
 - `severity`: the level from the scale above. The renderer turns it into the
   agent's decision (allow, ask or deny).
 - `prefix`: command prefixes, word by word. Rendered for Claude as
-  `Bash(<words>)` and `Bash(<words> *)`, plus `Bash(git -C * <rest>)` for
-  git. Rendered for Codex as `prefix_rule(pattern=..., decision=...)`, with
-  the severity carried into the justification.
+  `Bash(<words>)` and `Bash(<words> *)`, plus `Bash(git -C * <rest>)` for a
+  git rule that asks or denies. A git rule that allows gets no `-C` form:
+  Claude Code warns about an allow rule with a `*` before the subcommand,
+  since it also allows any option put there. The guard allows
+  `git -C <dir> <rest>` itself instead, from the prefixes in
+  `dist/claude/guard-allow.json`, and so an aws read verb after any
+  service. Rendered for Codex as `prefix_rule(pattern=..., decision=...)`,
+  with the severity carried into the justification.
 - `claude`: raw Claude Code permission rules, for anything a prefix cannot
   express (globs anywhere, `WebFetch(domain:...)`, `Read(...)`).
 - `reason`: one line. Codex shows it (with the severity) as the rule's

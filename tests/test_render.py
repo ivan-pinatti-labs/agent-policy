@@ -37,9 +37,24 @@ class Render(unittest.TestCase):
             self.assertTrue(perms[decision], decision)
             self.assertEqual(len(perms[decision]), len(set(perms[decision])), decision)
         self.assertIn("Bash(git push *)", perms["allow"])
-        self.assertIn("Bash(git -C * push *)", perms["allow"])
+        self.assertIn("Bash(git -C * reset *)", perms["ask"])
+        self.assertIn("Bash(git -C * push --force *)", perms["deny"])
         self.assertIn("Bash(*git*push*--force*)", perms["deny"])
         self.assertNotIn("Bash(env *)", perms["allow"])
+
+    def test_no_allow_rule_has_a_wildcard_before_the_subcommand(self):
+        # Claude Code warns at every start about an allow rule with a `*`
+        # before the rest of the command; the guard approves those forms.
+        for rule in self.claude["permissions"]["allow"]:
+            if rule.startswith("Bash("):
+                self.assertNotRegex(rule[5:-1], r"\*\s+\S", rule)
+
+    def test_the_guard_gets_the_allowed_prefixes(self):
+        allow = json.loads((Path(self.tmp) / "claude" / "guard-allow.json").read_text())
+        self.assertIn(["git", "status"], allow["prefixes"])
+        self.assertIn(["git", "push"], allow["prefixes"])
+        self.assertNotIn(["git", "reset"], allow["prefixes"])
+        self.assertEqual(len(allow["prefixes"]), len({tuple(p) for p in allow["prefixes"]}))
 
     def test_agent_logins_cannot_be_read_or_written_by_file_tools(self):
         deny = self.claude["permissions"]["deny"]
@@ -84,7 +99,11 @@ class Render(unittest.TestCase):
     def test_claude_hook(self):
         hook = self.claude["hooks"]["PreToolUse"][0]
         self.assertEqual("Bash", hook["matcher"])
-        self.assertTrue(hook["hooks"][0]["command"].endswith("/guard --agent claude"))
+        self.assertTrue(
+            hook["hooks"][0]["command"].endswith(
+                "/guard --agent claude --allow /usr/local/libexec/agent-policy/guard-allow.json"
+            )
+        )
 
     def test_paths_outside_the_repo_are_refused(self):
         import contextlib

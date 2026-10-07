@@ -134,7 +134,7 @@ Two layers, because neither agent's rule language can say everything:
 - **Static rules** decide by command prefix (`git push`, `podman rm`,
   `terraform apply`). They are written once in `policy/*.toml` and rendered
   into each agent's own format. Claude also gets glob rules for what a
-  prefix cannot say (`Bash(*git*push*--force*)`, `Bash(aws * describe-*)`).
+  prefix cannot say (`Bash(*git*push*--force*)`, `Bash(*aws * create-*)`).
 - **The guard** is one PreToolUse hook that both agents run before every
   shell command. It reads the whole line, looking through `&&`, pipes,
   `$(...)`, `bash -c` and wrappers such as `timeout`, `env` and `xargs`.
@@ -151,12 +151,12 @@ each agent receives the policy and what differs between them.
 
 ## What it builds
 
-`make build` writes three files to `dist/`, and `make install` puts them in
+`make build` writes four files to `dist/`, and `make install` puts them in
 place. The excerpts below are real: a test checks every line of them against
 a fresh build, so they cannot drift from what install actually writes.
 
-`dist/claude/50-agent-policy.json`, the Claude Code drop-in (about 1,250
-allow, 735 ask and 95 deny rules in all):
+`dist/claude/50-agent-policy.json`, the Claude Code drop-in (about 1,130
+allow, 745 ask and 100 deny rules in all):
 
 <!-- built: claude/50-agent-policy.json -->
 ```json
@@ -191,7 +191,7 @@ allow, 735 ask and 95 deny rules in all):
         "hooks": [
           {
             "type": "command",
-            "command": "/usr/local/libexec/agent-policy/guard --agent claude",
+            "command": "/usr/local/libexec/agent-policy/guard --agent claude --allow /usr/local/libexec/agent-policy/guard-allow.json",
             "timeout": 10
           }
         ]
@@ -200,6 +200,12 @@ allow, 735 ask and 95 deny rules in all):
   }
 }
 ```
+
+`dist/claude/guard-allow.json`, the command prefixes the Claude rules allow,
+installed next to the guard. The guard reads it to allow `git -C <dir> status`
+and an aws read verb such as `aws ec2 describe-instances` itself, since a
+rule for those needs a `*` before the subcommand, which Claude Code warns
+about at every start.
 
 `dist/codex/agent-policy.rules`, the Codex prefix rules, each carrying its
 severity in the justification Codex shows:

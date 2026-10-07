@@ -115,6 +115,22 @@ def has_unexpanded(source):
     return "$" in source or "`" in source
 
 
+def agent_memory(path, home):
+    """True for Claude Code's memory notes, ~/.claude*/projects/<project>/memory
+    and below. They sit inside the login's folder but hold no credential, and
+    an agent reads its own back, so a read there is not a credential read.
+    Writing them is still refused like any write under that folder."""
+    if not under(path, home):
+        return False
+    parts = os.path.relpath(path, home).split(os.sep)
+    return (
+        len(parts) >= 4
+        and parts[0].startswith(tuple(CREDENTIAL_PREFIXES))
+        and parts[1] == "projects"
+        and parts[3] == "memory"
+    )
+
+
 def credential_target(path, home):
     """The credential location `path` (absolute) reads or writes, or None."""
     for rel in CREDENTIAL_DIRS:

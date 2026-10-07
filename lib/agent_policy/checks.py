@@ -6,6 +6,15 @@ Every Finding carries a severity from the scale in docs/POLICY.md; the
 decision (allow, ask, deny) follows from it. The guard never emits allow
 findings, so in practice a finding is moderate or high (ask) or severe or
 critical (deny, a hand-off to the user).
+
+approve() is the one place the guard allows: a command the static rules
+would allow but for an option before the subcommand (`git -C <dir> status`)
+or a read verb after an unknown service (`aws ec2 describe-instances`).
+A static rule for those needs a `*` before the subcommand, which also
+matches any option inserted there, so Claude Code warns about it at every
+start. The guard reads the option instead, and allows only what it can
+see. Claude Code still applies every deny and ask rule over an allow from
+a hook.
 """
 
 import os
@@ -62,6 +71,77 @@ def evaluate(command, cwd, env=None, inspector=containers.inspect):
             if worst is None or finding.rank > worst.rank:
                 worst = finding
     return worst
+
+
+# Variables a command may set and still be approved: each only picks which
+# account or region an aws read goes to.
+APPROVE_ENV = {"aws": {"AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION", "AWS_PAGER"}}
+# aws read verbs that still write: get-object saves the object to a local
+# path the guard does not check.
+AWS_READS_THAT_WRITE = {"get-object", "get-object-torrent"}
+QUIET_REDIRECTS = ("/dev/null", "/dev/stdout", "/dev/stderr")
+
+
+def approve(command, cwd, allowed, env=None, inspector=containers.inspect):
+    """True when the guard itself allows `command` (see the module docstring).
+
+    `allowed` is the list of command prefixes, as word lists, that the static
+    rules allow. The line is approved only if the guard finds nothing in it,
+    every simple command on it is one the static rules allow, once the guard
+    has read past `git -C <dir>` or an aws read verb, and at least one of them
+    needed that reading. Anything else is left to the static rules, so a
+    line they would not allow on their own still prompts."""
+    env = os.environ if env is None else env
+    if not allowed:
+        return False
+    try:
+        segs = list(segments(command))
+    except ParseError:
+        return False
+    prefixes = {tuple(p) for p in allowed}
+    home = env.get("HOME", os.path.expanduser("~"))
+    verdicts = [_approval(seg, prefixes, cwd, home) for seg in segs]
+    if None in verdicts or "read" not in verdicts:
+        return False
+    return evaluate(command, cwd, env, inspector) is None
+
+
+def _approval(seg, prefixes, cwd, home):
+    """'static' when the static rules allow the simple command as written,
+    'read' when only the guard's reading allows it, None when neither does."""
+    if seg.wrapped or not seg.words or seg.words[0] != seg.name:
+        return None
+    if set(seg.env) - APPROVE_ENV.get(seg.name, set()):
+        return None
+    if any(t not in QUIET_REDIRECTS and not t.startswith("&") for _, t in seg.redirects):
+        return None
+    if _allowed_prefix(seg.words, prefixes):
+        return "static"
+    if seg.name == "git":
+        words, dirs = _without_git_dirs(seg.words)
+        if not dirs or any(_unresolved(d) for d in dirs):
+            return None
+        if any(containers.credential_target(containers.expand(d, cwd, home), home) for d in dirs):
+            return None
+        return "read" if _allowed_prefix(words, prefixes) else None
+    if seg.name == "aws":
+        _, op = _aws_service_op(seg.words[1:])
+        if op and op.startswith(AWS_READ_PREFIXES) and op not in AWS_READS_THAT_WRITE:
+            return "read"
+    return None
+
+
+def _allowed_prefix(words, prefixes):
+    return any(tuple(words[:n]) in prefixes for n in range(1, len(words) + 1))
+
+
+def _without_git_dirs(words):
+    """`git -C a -C b status` as (['git', 'status'], ['a', 'b'])."""
+    rest, dirs = list(words[1:]), []
+    while len(rest) > 1 and rest[0] == "-C":
+        dirs.append(rest[1])
+        rest = rest[2:]
+    return ["git", *rest], dirs
 
 
 # Commands whose path arguments are read. Copy, move, sync and archive tools
@@ -172,7 +252,7 @@ def _redirects(seg, ctx):
         path = containers.expand(target, ctx["cwd"], ctx["home"])
         if op in INPUT_REDIRECTS:
             cred = containers.credential_target(path, ctx["home"])
-            if cred:
+            if cred and not containers.agent_memory(path, ctx["home"]):
                 yield Finding(
                     "critical", f"reads {cred} through a redirect, which holds credentials"
                 )
@@ -384,7 +464,7 @@ def _reader(seg, ctx):
             continue
         path = containers.expand(token, ctx["cwd"], ctx["home"])
         cred = containers.credential_target(path, ctx["home"])
-        if cred:
+        if cred and not containers.agent_memory(path, ctx["home"]):
             yield Finding("critical", f"{seg.name} reads {cred}, which holds credentials")
 
 
@@ -440,7 +520,6 @@ GIT_GLOBAL_WITH_VALUE = {
     "--namespace",
     "--config-env",
     "--super-prefix",
-    "--exec-path",
 }
 
 
@@ -453,10 +532,16 @@ def _hook_bypass_env(seg):
 
 
 def _split_git(words):
-    i, config, config_env = 1, [], False
+    i, config, config_env, exec_path = 1, [], False, False
     while i < len(words) and words[i].startswith("-"):
         flag = words[i]
-        if flag == "--config-env" or flag.startswith("--config-env="):
+        if flag.startswith("--exec-path="):
+            # Where git looks for its helpers and non-builtin subcommands,
+            # so any folder here runs its programs as git (git-remote-https
+            # on a fetch). Bare --exec-path only prints the folder.
+            exec_path = True
+            i += 1
+        elif flag == "--config-env" or flag.startswith("--config-env="):
             config_env = True
             i += 1 if "=" in flag else 2
         elif flag in GIT_GLOBAL_WITH_VALUE:
@@ -468,8 +553,8 @@ def _split_git(words):
                 config.append(flag[2:])
             i += 1
     if i >= len(words):
-        return None, [], config, config_env
-    return words[i], words[i + 1 :], config, config_env
+        return None, [], config, config_env, exec_path
+    return words[i], words[i + 1 :], config, config_env, exec_path
 
 
 def _short_cluster(arg):
@@ -500,9 +585,11 @@ def _dangerous_git_config(key):
 
 
 def _git(seg, ctx):
-    sub, args, config, config_env = _split_git(seg.words)
+    sub, args, config, config_env, exec_path = _split_git(seg.words)
     if config_env:
         yield Finding("critical", "git --config-env passes config this guard cannot read")
+    if exec_path or "GIT_EXEC_PATH" in seg.env:
+        yield Finding("critical", "git --exec-path runs git's helpers from another folder")
     for item in config:
         if item.lower().startswith("core.hookspath"):
             yield Finding("critical", "overrides core.hooksPath to skip the git hooks")

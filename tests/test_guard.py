@@ -9,8 +9,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
+sys.path.insert(0, str(ROOT / "tools"))
 
-from agent_policy.checks import evaluate
+import render
+from agent_policy.checks import approve, evaluate
 
 ENV = {
     "HOME": "/home/user",
@@ -47,6 +49,26 @@ class GuardCases(unittest.TestCase):
                 )
                 got = finding.decision if finding else "none"
                 self.assertEqual(case["expect"], got, finding.reason if finding else "no finding")
+
+
+def allowed_prefixes():
+    return render.guard_allow(render.load(ROOT / "policy"))["prefixes"]
+
+
+class Approvals(unittest.TestCase):
+    def test_cases(self):
+        allowed = allowed_prefixes()
+        with open(ROOT / "tests" / "approve_cases.toml", "rb") as handle:
+            cases = tomllib.load(handle)["case"]
+        for case in cases:
+            with self.subTest(command=case["command"]):
+                got = approve(
+                    case["command"], "/work/project", allowed, env=ENV, inspector=fake_inspect
+                )
+                self.assertEqual(case["expect"], got)
+
+    def test_nothing_allowed_approves_nothing(self):
+        self.assertFalse(approve("git -C /work/other status", "/work/project", [], env=ENV))
 
 
 class Symlinks(unittest.TestCase):
@@ -94,16 +116,32 @@ class Symlinks(unittest.TestCase):
 class HookProtocol(unittest.TestCase):
     """The hook's stdout, as each agent reads it."""
 
-    def run_hook(self, agent, command):
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+
+        cls.tmp = tempfile.mkdtemp()
+        cls.allow = Path(cls.tmp) / "guard-allow.json"
+        cls.allow.write_text(json.dumps({"prefixes": allowed_prefixes()}))
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+
+        shutil.rmtree(cls.tmp)
+
+    def run_hook(self, agent, command, mode="default"):
         payload = {
             "tool_name": "Bash",
             "tool_input": {"command": command},
             "cwd": "/work/project",
             "session_id": "test",
+            "permission_mode": mode,
         }
         env = dict(os.environ, **ENV)
+        guard = [sys.executable, str(ROOT / "hooks" / "guard")]
         proc = subprocess.run(
-            [sys.executable, str(ROOT / "hooks" / "guard"), "--agent", agent],
+            [*guard, "--agent", agent, "--allow", str(self.allow)],
             input=json.dumps(payload),
             capture_output=True,
             text=True,
@@ -114,6 +152,15 @@ class HookProtocol(unittest.TestCase):
 
     def test_silent_when_nothing_found(self):
         self.assertIsNone(self.run_hook("claude", "git status"))
+
+    def test_allows_what_only_the_guard_can_read(self):
+        out = self.run_hook("claude", "git -C /work/other status")
+        self.assertEqual("allow", out["permissionDecision"])
+        self.assertIn("agent-policy", out["permissionDecisionReason"])
+
+    def test_never_allows_for_codex_or_in_plan_mode(self):
+        self.assertIsNone(self.run_hook("codex", "git -C /work/other status"))
+        self.assertIsNone(self.run_hook("claude", "git -C /work/other status", mode="plan"))
 
     def test_deny_hands_off_to_the_user(self):
         for agent in ("claude", "codex"):

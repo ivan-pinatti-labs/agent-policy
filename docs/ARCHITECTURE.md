@@ -18,12 +18,14 @@ flowchart TB
   P -->|tools/render.py| D1["dist/claude/50-agent-policy.json"]
   P -->|tools/render.py| D2["dist/codex/agent-policy.rules"]
   P -->|tools/render.py| D3["dist/codex/requirements.toml"]
+  P -->|tools/render.py| D4["dist/claude/guard-allow.json"]
   L --> G
   L --> S
   D1 -->|make install| I1["/etc/claude-code/managed-settings.d/"]
   D2 -->|make install| I2["~/.codex/rules/"]
   D3 -->|make install| I3["/etc/codex/requirements.toml"]
   G -->|make install| I4["/usr/local/libexec/agent-policy/"]
+  D4 -->|make install| I4
   S -->|make install| I5["/usr/local/bin/agent-scratch"]
 ```
 
@@ -140,6 +142,32 @@ send the command as `tool_input.command` and the working directory as
 | none    | silent (the static rules decide)        | silent                                 |
 | ask     | `ask`: the normal prompt, with a reason | `deny`, saying approval is needed      |
 | deny    | `deny`, with the hand-off message       | `deny`, with the hand-off message      |
+| approve | `allow` (see below)                     | silent                                 |
+
+### What the guard allows
+
+A static allow rule for `git -C <dir> status` or `aws ec2
+describe-instances` needs a `*` before the subcommand (`git -C * status`,
+`aws * describe-*`), and that `*` also matches any option put there, such as
+`--exec-path=<dir>`. Claude Code warns about every such rule at each start.
+So the renderer leaves those out, and the guard allows the command itself
+(`approve()` in `lib/agent_policy/checks.py`) when:
+
+- it finds nothing in the line;
+- every simple command on it is one the static rules allow, once the guard
+  has read past `git -C <dir>` (the prefixes in
+  `dist/claude/guard-allow.json`) or an aws read verb after any service;
+- at least one of them needed that reading, so a line the static rules
+  already decide is left to them;
+- no command is wrapped (`sudo`, `env`, `xargs`...), sets a variable (an aws
+  profile or region aside), or redirects anywhere but `/dev/null`, and no
+  `-C` folder is a credential folder or a path it cannot resolve.
+
+Claude Code applies every deny and ask rule over an allow from a hook, so
+this can only stand in for a static allow, never lift a prompt or a refusal.
+Codex is never approved (its allow runs a command outside its sandbox), and
+neither is anything in plan mode. A missing or unreadable allow file
+approves nothing.
 
 The hand-off message tells the agent not to retry, rephrase or work around
 the command, and gives the user the exact line to run themselves:
@@ -211,6 +239,8 @@ host:
 - `tests/guard_cases.toml`: command lines and the decision the guard must
   reach, against a fake engine that knows one protected and one ordinary
   container.
+- `tests/approve_cases.toml`: command lines and whether the guard allows
+  them itself, against the prefixes this checkout's policy allows.
 - `tests/codex_cases.toml`: what Codex decides from the rendered rules
   alone, checked by `codex execpolicy check` with the Codex version the
   image pins.
