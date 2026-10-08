@@ -199,7 +199,8 @@ write:
    `nohup`, `xargs`, `sudo`, `stdbuf`, `watch`, `flock` and others, with
    their options). The header of `for`, `select` and `case` (a variable
    name and its word list, or a word and a pattern) runs nothing, so it is
-   not judged as a command.
+   not judged as a command. `function name { ... }` loses `function` and
+   the name, so its body is judged and the name is not.
 5. `bash -c '...'`, `sh -c '...'` and `eval '...'` are read again as
    command lines.
 6. A variable the line itself sets is replaced by its value where that
