@@ -257,6 +257,23 @@ READERS = {
     "fold",
     "fmt",
     "gpg",
+    # Print a file's content too: diff and its kin show every line that
+    # differs (all of them against /dev/null), the rest print lines as they go.
+    "diff",
+    "diff3",
+    "sdiff",
+    "comm",
+    "join",
+    "paste",
+    "look",
+    "expand",
+    "unexpand",
+    "pr",
+    "iconv",
+    "shuf",
+    "csplit",
+    "jq",
+    "yq",
 }
 WRITERS = {"cp", "mv", "install", "rsync", "ln", "tee", "dd", "truncate", "sed", "yq", "jq"}
 
@@ -505,11 +522,87 @@ def _program_operands(name, args):
     return files + positional
 
 
+# jq and yq: the first positional is the filter, unless a file supplies it.
+# Options that take a value, by how many words follow them; the files some
+# of them read; and yq's subcommands, which come before the filter.
+QUERY_VALUED = {
+    "jq": {"--arg": 2, "--argjson": 2, "--indent": 1, "-L": 1, "--library-path": 1},
+    "yq": {
+        "-o": 1,
+        "--output-format": 1,
+        "-p": 1,
+        "--input-format": 1,
+        "-I": 1,
+        "--indent": 1,
+        "--expression": 1,
+        "-f": 1,
+        "--front-matter": 1,
+        "--split-exp": 1,
+    },
+}
+QUERY_FILE = {
+    "jq": {"-f": 0, "--from-file": 0, "--rawfile": 1, "--slurpfile": 1},
+    "yq": {"--from-file": 0},
+}
+# Options that supply the filter, so the first positional is a file. yq's
+# -f is --front-matter, not a filter file.
+QUERY_FILTER_GIVEN = {"jq": {"-f", "--from-file"}, "yq": {"--from-file", "--expression"}}
+YQ_SUBCOMMANDS = {"e", "eval", "ea", "eval-all"}
+# Long options of diff that name a file inside their own word.
+DIFF_FILE_OPTIONS = ("--from-file=", "--to-file=")
+
+
+def _query_operands(name, args):
+    """The file operands of jq or yq: files options read (the filter's own
+    file, --rawfile and --slurpfile), then the positionals without the
+    filter, unless an option supplied it. After --args or --jsonargs the
+    rest are values, not files."""
+    valued, file_options = QUERY_VALUED[name], QUERY_FILE[name]
+    files, positional, supplied, i = [], [], False, 0
+    while i < len(args):
+        arg = args[i]
+        opt, eq, value = arg.partition("=")
+        if arg == "--":
+            positional += args[i + 1 :]
+            break
+        if arg in ("--args", "--jsonargs"):
+            break
+        if opt in file_options:
+            # The file is the last of the option's words: --rawfile NAME FILE.
+            skip = file_options[opt]
+            if eq and skip == 0:
+                files.append(value)
+            elif not eq and i + 1 + skip < len(args):
+                files.append(args[i + 1 + skip])
+            i += 1 + (0 if eq else skip + 1)
+            supplied = supplied or opt in QUERY_FILTER_GIVEN[name]
+            continue
+        if opt in valued:
+            supplied = supplied or opt in QUERY_FILTER_GIVEN[name]
+            i += 1 + (0 if eq else valued[opt])
+            continue
+        if arg != "-" and arg.startswith("-"):
+            i += 1
+            continue
+        positional.append(arg)
+        i += 1
+    if name == "yq" and positional[:1] and positional[0] in YQ_SUBCOMMANDS:
+        positional = positional[1:]
+    if not supplied and positional:
+        positional = positional[1:]
+    return files + positional
+
+
 def _operands(seg):
     """The path operands of a reader."""
     if seg.name in PROGRAM_OPTIONS:
         return _program_operands(seg.name, seg.words[1:])
-    return list(_paths(seg.words[1:]))
+    if seg.name in QUERY_VALUED:
+        return _query_operands(seg.name, seg.words[1:])
+    paths = list(_paths(seg.words[1:]))
+    if seg.name in ("diff", "diff3", "sdiff"):
+        paths += [w.split("=", 1)[1] for w in seg.words[1:] if w.startswith(DIFF_FILE_OPTIONS)]
+    return paths
 
 
 def _reader(seg, ctx):

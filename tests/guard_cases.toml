@@ -982,3 +982,110 @@ expect = "deny"
 [[case]]
 command = "tee /home/user/.claude/projects/p/memory/note.md"
 expect = "deny"
+
+# More commands that print a file's content: each reads a credential only
+# with a refusal, and a project file freely.
+[[case]]
+command = "diff /dev/null ~/.ssh/id_ed25519"
+expect = "deny"
+[[case]]
+command = "diff -u --from-file=~/.netrc notes.md"
+expect = "deny"
+[[case]]
+command = "sdiff ~/.pgpass notes.md"
+expect = "deny"
+[[case]]
+command = "diff3 a b ~/.git-credentials"
+expect = "deny"
+[[case]]
+command = "comm ~/.pgpass /dev/null"
+expect = "deny"
+[[case]]
+command = "join ~/.git-credentials ~/.git-credentials"
+expect = "deny"
+[[case]]
+command = "paste ~/.netrc"
+expect = "deny"
+[[case]]
+command = "look a ~/.netrc"
+expect = "deny"
+[[case]]
+command = "expand ~/.aws/credentials"
+expect = "deny"
+[[case]]
+command = "unexpand ~/.aws/credentials"
+expect = "deny"
+[[case]]
+command = "pr ~/.netrc"
+expect = "deny"
+[[case]]
+command = "iconv -f utf8 -t ascii ~/.netrc"
+expect = "deny"
+[[case]]
+command = "shuf ~/.netrc"
+expect = "deny"
+[[case]]
+command = "csplit ~/.netrc 2"
+expect = "deny"
+[[case]]
+command = "diff -u old.txt new.txt"
+expect = "none"
+[[case]]
+command = "paste a.csv b.csv"
+expect = "none"
+
+# jq and yq: the filter is not a path, the files they read are.
+[[case]]
+command = "jq . ~/.claude/.credentials.json"
+expect = "deny"
+[[case]]
+command = "jq -r .token < ~/.claude/.credentials.json"
+expect = "deny"
+[[case]]
+command = "jq -f ~/.ssh/id_ed25519 data.json"
+expect = "deny"
+[[case]]
+command = "jq --from-file=~/.ssh/id_ed25519 data.json"
+expect = "deny"
+[[case]]
+command = "jq -f filter.jq ~/.netrc"
+expect = "deny"
+[[case]]
+command = "jq -n --rawfile t ~/.netrc $t"
+expect = "deny"
+[[case]]
+command = "jq -n --slurpfile t ~/.claude/.credentials.json .x"
+expect = "deny"
+[[case]]
+command = "jq --arg k v .a -- ~/.netrc"
+expect = "deny"
+[[case]]
+command = "yq . ~/.kube/config"
+expect = "deny"
+[[case]]
+command = "yq eval -o json .users ~/.kube/config"
+expect = "deny"
+[[case]]
+command = "yq --expression .a ~/.kube/config"
+expect = "deny"
+[[case]]
+command = "jq .name package.json"
+expect = "none"
+[[case]]
+command = "jq -r --indent=2 .name package.json"
+expect = "none"
+[[case]]
+command = "jq --arg n v --argjson m 1 .a package.json"
+expect = "none"
+[[case]]
+command = "jq -n --args $ARGS.positional a b"
+expect = "none"
+[[case]]
+command = "jq -f"
+expect = "none"
+[[case]]
+command = "yq e -o json -f extract .a config.yaml"
+expect = "none"
+[[case]]
+command = "jq -n .x"
+expect = "none"
