@@ -1168,3 +1168,18 @@ expect = "deny"
 [[case]]
 command = "sort --key=2 --field-separator=, data.csv"
 expect = "none"
+[[case]]
+command = "yq 'eval(.expression)' project.yaml"
+expect = "ask"
+[[case]]
+command = "jq --run-tests ~/.netrc"
+expect = "deny"
+[[case]]
+command = "jq --run-tests tests.jq"
+expect = "none"
+[[case]]
+command = "yq $DIR/.netrc"
+expect = "ask"
+[[case]]
+command = "yq $HOME/.netrc"
+expect = "deny"

@@ -308,8 +308,9 @@ def _check(seg, ctx):
 
 # yq's load operators read a file named inside the expression, which can be
 # built at run time (load_str(strenv(HOME) + "/.netrc")), so no path is there
-# to judge. --security-disable-file-ops turns them off.
-YQ_LOAD = re.compile(r"\bload(?:_[a-z0-9]+)?\s*\(")
+# to judge; eval runs an expression read from the data, which can hold one.
+# --security-disable-file-ops turns them off.
+YQ_LOAD = re.compile(r"\b(?:load(?:_[a-z0-9]+)?|eval)\s*\(")
 
 
 def _yq(seg, ctx):
@@ -593,6 +594,9 @@ def _query_operands(name, args):
             break
         if name == "jq" and arg in ("--args", "--jsonargs"):
             values = True
+        elif name == "jq" and arg == "--run-tests":
+            # Its file is the first positional, read as tests, not a filter.
+            from_file = True
         elif opt in file_options:
             # The file is the last of the option's words: --rawfile NAME FILE.
             skip = file_options[opt]
@@ -618,8 +622,10 @@ def _query_operands(name, args):
         program, positional = positional[0][0], positional[1:]
         # yq takes a file where the expression would go (yq ~/.netrc prints
         # it), so its first positional is judged as a path as well, unless it
-        # holds an expansion, which a path to a credential would not need.
-        if from_file or (name == "yq" and not _unresolved(program)):
+        # holds an expansion and no slash: a filter variable such as $x. One
+        # shaped like a path ($DIR/.netrc) is judged, and so asks.
+        path_shaped = program.startswith("$") and "/" in program
+        if from_file or (name == "yq" and (not _unresolved(program) or path_shaped)):
             files.append(program)
     return files + [word for word, is_value in positional if not is_value]
 
