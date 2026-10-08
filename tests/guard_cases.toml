@@ -1089,3 +1089,45 @@ expect = "none"
 [[case]]
 command = "jq -n .x"
 expect = "none"
+
+# jq reads options after --args too, and -f in a short cluster; diff takes
+# any unambiguous prefix of a long option.
+[[case]]
+command = "jq -n --args .x --rawfile t ~/.netrc a"
+expect = "deny"
+[[case]]
+command = "jq -nf ~/.netrc data.json"
+expect = "deny"
+[[case]]
+command = "jq -rf ~/.ssh/id_ed25519 data.json"
+expect = "deny"
+[[case]]
+command = "jq ~/.ssh/id_ed25519 data.json -f"
+expect = "deny"
+[[case]]
+command = "jq --args .x -- a ~/.netrc"
+expect = "none"
+[[case]]
+command = "jq -rn .x"
+expect = "none"
+[[case]]
+command = "diff --from=~/.netrc /dev/null"
+expect = "deny"
+[[case]]
+command = "diff --to-f=~/.netrc /dev/null"
+expect = "deny"
+[[case]]
+command = "sdiff --output=merged.txt a b"
+expect = "none"
+[[case]]
+command = "diff --unified=3 --label=old a b"
+expect = "none"
+[[case]]
+command = "yq --from-file=~/.ssh/id_ed25519 config.yaml"
+expect = "deny"
+[[case]]
+command = "yq --from-file filter.yq config.yaml"
+expect = "none"
+[[case]]
+command = "jq -n --rawfile t"
+expect = "none"

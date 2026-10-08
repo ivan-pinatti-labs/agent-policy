@@ -541,56 +541,65 @@ QUERY_VALUED = {
     },
 }
 QUERY_FILE = {
-    "jq": {"-f": 0, "--from-file": 0, "--rawfile": 1, "--slurpfile": 1},
+    "jq": {"--rawfile": 1, "--slurpfile": 1},
     "yq": {"--from-file": 0},
 }
-# Options that supply the filter, so the first positional is a file. yq's
+# yq options that supply the filter, so no positional is the filter. yq's
 # -f is --front-matter, not a filter file.
-QUERY_FILTER_GIVEN = {"jq": {"-f", "--from-file"}, "yq": {"--from-file", "--expression"}}
+QUERY_FILTER_GIVEN = {"jq": set(), "yq": {"--from-file", "--expression"}}
 YQ_SUBCOMMANDS = {"e", "eval", "ea", "eval-all"}
-# Long options of diff that name a file inside their own word.
-DIFF_FILE_OPTIONS = ("--from-file=", "--to-file=")
+
+
+def _jq_from_file(arg, opt):
+    """jq's -f or --from-file, alone or in a short cluster (-nf, -rf): a flag
+    that makes the first positional the filter's file, wherever it comes."""
+    if opt == "--from-file":
+        return True
+    return arg[:1] == "-" and arg[1:2] != "-" and "f" in arg[1:]
 
 
 def _query_operands(name, args):
-    """The file operands of jq or yq: files options read (the filter's own
-    file, --rawfile and --slurpfile), then the positionals without the
-    filter, unless an option supplied it. After --args or --jsonargs the
-    rest are values, not files."""
+    """The file operands of jq or yq: the files options read (--rawfile,
+    --slurpfile, yq's --from-file), then the positionals. The first
+    positional is the filter, or for jq -f the filter's file; yq's subcommand
+    comes before it. jq keeps reading options after --args and --jsonargs,
+    but the positionals after them are values, not files."""
     valued, file_options = QUERY_VALUED[name], QUERY_FILE[name]
-    files, positional, supplied, i = [], [], False, 0
+    files, positional, values, supplied, from_file, i = [], [], False, False, False, 0
     while i < len(args):
         arg = args[i]
         opt, eq, value = arg.partition("=")
         if arg == "--":
-            positional += args[i + 1 :]
+            positional += [(word, values) for word in args[i + 1 :]]
             break
-        if arg in ("--args", "--jsonargs"):
-            break
-        if opt in file_options:
+        if name == "jq" and arg in ("--args", "--jsonargs"):
+            values = True
+        elif opt in file_options:
             # The file is the last of the option's words: --rawfile NAME FILE.
             skip = file_options[opt]
             if eq and skip == 0:
                 files.append(value)
             elif not eq and i + 1 + skip < len(args):
                 files.append(args[i + 1 + skip])
-            i += 1 + (0 if eq else skip + 1)
+            i += 0 if eq else skip + 1
             supplied = supplied or opt in QUERY_FILTER_GIVEN[name]
-            continue
-        if opt in valued:
+        elif opt in valued:
             supplied = supplied or opt in QUERY_FILTER_GIVEN[name]
-            i += 1 + (0 if eq else valued[opt])
-            continue
-        if arg != "-" and arg.startswith("-"):
-            i += 1
-            continue
-        positional.append(arg)
+            i += 0 if eq else valued[opt]
+        elif name == "jq" and _jq_from_file(arg, opt):
+            from_file = True
+            if eq:
+                files.append(value)
+        elif arg == "-" or not arg.startswith("-"):
+            positional.append((arg, values))
         i += 1
-    if name == "yq" and positional[:1] and positional[0] in YQ_SUBCOMMANDS:
+    if name == "yq" and positional[:1] and positional[0][0] in YQ_SUBCOMMANDS:
         positional = positional[1:]
-    if not supplied and positional:
-        positional = positional[1:]
-    return files + positional
+    if positional and not supplied:
+        program, positional = positional[0][0], positional[1:]
+        if from_file:
+            files.append(program)
+    return files + [word for word, is_value in positional if not is_value]
 
 
 def _operands(seg):
@@ -601,7 +610,10 @@ def _operands(seg):
         return _query_operands(seg.name, seg.words[1:])
     paths = list(_paths(seg.words[1:]))
     if seg.name in ("diff", "diff3", "sdiff"):
-        paths += [w.split("=", 1)[1] for w in seg.words[1:] if w.startswith(DIFF_FILE_OPTIONS)]
+        # Any --option=VALUE: GNU long options take an unambiguous prefix
+        # (--from= is --from-file=), so the value of each is judged as a path,
+        # which a value that is not one passes.
+        paths += [w.split("=", 1)[1] for w in seg.words[1:] if w.startswith("--") and "=" in w]
     return paths
 
 
