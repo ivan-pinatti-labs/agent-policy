@@ -1131,3 +1131,40 @@ expect = "none"
 [[case]]
 command = "jq -n --rawfile t"
 expect = "none"
+
+# yq's load operators read a file named inside the expression; yq takes a
+# file where the expression would go; jq's library path is read by import;
+# any reader's --option=VALUE can name a file.
+[[case]]
+command = "yq -n 'load_str(strenv(HOME) + \"/.netrc\")'"
+expect = "ask"
+[[case]]
+command = "yq '.a = load(\"other.yaml\")' config.yaml"
+expect = "ask"
+[[case]]
+command = "yq --security-disable-file-ops '.a = load(\"other.yaml\")' config.yaml"
+expect = "none"
+[[case]]
+command = "yq ~/.netrc"
+expect = "deny"
+[[case]]
+command = "yq eval ~/.kube/config"
+expect = "deny"
+[[case]]
+command = "yq '.a | . as $x | $x' config.yaml"
+expect = "none"
+[[case]]
+command = "jq -L ~/.claude -n 'import \".credentials\" as $c; $c'"
+expect = "deny"
+[[case]]
+command = "jq --library-path=~/.ssh -n 1"
+expect = "deny"
+[[case]]
+command = "shuf --random-source=~/.netrc notes.txt"
+expect = "deny"
+[[case]]
+command = "sort --files0-from=~/.netrc"
+expect = "deny"
+[[case]]
+command = "sort --key=2 --field-separator=, data.csv"
+expect = "none"

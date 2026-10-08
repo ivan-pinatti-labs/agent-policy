@@ -300,9 +300,27 @@ def _check(seg, ctx):
         "docker": _engine,
         "podman-compose": _compose,
         "docker-compose": _compose,
+        "yq": _yq,
     }.get(seg.name)
     if handler:
         yield from handler(seg, ctx)
+
+
+# yq's load operators read a file named inside the expression, which can be
+# built at run time (load_str(strenv(HOME) + "/.netrc")), so no path is there
+# to judge. --security-disable-file-ops turns them off.
+YQ_LOAD = re.compile(r"\bload(?:_[a-z0-9]+)?\s*\(")
+
+
+def _yq(seg, ctx):
+    if "--security-disable-file-ops" in seg.words:
+        return
+    if any(YQ_LOAD.search(word) for word in seg.words[1:]):
+        yield Finding(
+            "high",
+            "yq loads a file named inside its expression, which this guard cannot judge;"
+            " add --security-disable-file-ops, or read the file with yq directly",
+        )
 
 
 # Redirections
@@ -526,7 +544,7 @@ def _program_operands(name, args):
 # Options that take a value, by how many words follow them; the files some
 # of them read; and yq's subcommands, which come before the filter.
 QUERY_VALUED = {
-    "jq": {"--arg": 2, "--argjson": 2, "--indent": 1, "-L": 1, "--library-path": 1},
+    "jq": {"--arg": 2, "--argjson": 2, "--indent": 1},
     "yq": {
         "-o": 1,
         "--output-format": 1,
@@ -541,7 +559,8 @@ QUERY_VALUED = {
     },
 }
 QUERY_FILE = {
-    "jq": {"--rawfile": 1, "--slurpfile": 1},
+    # jq's library path is judged too: import and include read files from it.
+    "jq": {"--rawfile": 1, "--slurpfile": 1, "-L": 0, "--library-path": 0},
     "yq": {"--from-file": 0},
 }
 # yq options that supply the filter, so no positional is the filter. yq's
@@ -597,7 +616,10 @@ def _query_operands(name, args):
         positional = positional[1:]
     if positional and not supplied:
         program, positional = positional[0][0], positional[1:]
-        if from_file:
+        # yq takes a file where the expression would go (yq ~/.netrc prints
+        # it), so its first positional is judged as a path as well, unless it
+        # holds an expansion, which a path to a credential would not need.
+        if from_file or (name == "yq" and not _unresolved(program)):
             files.append(program)
     return files + [word for word, is_value in positional if not is_value]
 
@@ -608,13 +630,12 @@ def _operands(seg):
         return _program_operands(seg.name, seg.words[1:])
     if seg.name in QUERY_VALUED:
         return _query_operands(seg.name, seg.words[1:])
+    # The value of any --option=VALUE is judged as a path too: some read a
+    # file (shuf and sort --random-source=, sort --files0-from=, diff
+    # --from-file=), GNU takes any unambiguous prefix of a long option (--from=
+    # is --from-file=), and a value that is not a credential path passes.
     paths = list(_paths(seg.words[1:]))
-    if seg.name in ("diff", "diff3", "sdiff"):
-        # Any --option=VALUE: GNU long options take an unambiguous prefix
-        # (--from= is --from-file=), so the value of each is judged as a path,
-        # which a value that is not one passes.
-        paths += [w.split("=", 1)[1] for w in seg.words[1:] if w.startswith("--") and "=" in w]
-    return paths
+    return paths + [w.split("=", 1)[1] for w in seg.words[1:] if w.startswith("--") and "=" in w]
 
 
 def _reader(seg, ctx):

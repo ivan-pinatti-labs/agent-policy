@@ -171,6 +171,7 @@
     "shutil",
     "slirp",
     "slurpfile",
+    "strenv",
     "socat",
     "sonar",
     "sonarcloud",
