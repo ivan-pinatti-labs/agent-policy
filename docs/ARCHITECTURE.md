@@ -192,10 +192,14 @@ write:
    (`>`, `>>`, `>|`, `<`, `<>`, with or without a descriptor number) is
    taken out of the command's words into a list of (operator, target)
    pairs. Heredocs and here-strings are data and are dropped.
-4. Each simple command loses its leading variable assignments (kept, since
-   `HUSKY=0` matters) and wrappers (`env`, `timeout`, `nice`, `nohup`,
-   `xargs`, `sudo`, `stdbuf`, `watch`, `flock` and others, with their
-   options).
+4. Each simple command loses its leading reserved words (`do`, `then`,
+   `else`, `if`, `while`, `!`, `{` and the rest, so the command inside a
+   loop, a condition or a group is the one judged), variable assignments
+   (kept, since `HUSKY=0` matters) and wrappers (`env`, `timeout`, `nice`,
+   `nohup`, `xargs`, `sudo`, `stdbuf`, `watch`, `flock` and others, with
+   their options). The header of `for`, `select` and `case` (a variable
+   name and its word list, or a word and a pattern) runs nothing, so it is
+   not judged as a command.
 5. `bash -c '...'`, `sh -c '...'` and `eval '...'` are read again as
    command lines.
 
