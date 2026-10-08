@@ -982,3 +982,85 @@ expect = "deny"
 [[case]]
 command = "tee /home/user/.claude/projects/p/memory/note.md"
 expect = "deny"
+
+# A command after a reserved word (a loop body, a condition, a group) is
+# judged like the same command on its own; a for, select or case header runs
+# nothing and is not judged as a command.
+[[case]]
+command = "for f in a b; do cat ~/.ssh/id_rsa; done"
+expect = "deny"
+[[case]]
+command = "while true; do git push --force origin x; done"
+expect = "deny"
+[[case]]
+command = "until false; do git push origin +main; done"
+expect = "deny"
+[[case]]
+command = "if true; then cat ~/.ssh/id_rsa; fi"
+expect = "deny"
+[[case]]
+command = "if false; then :; elif true; then cat ~/.ssh/id_rsa; fi"
+expect = "deny"
+[[case]]
+command = "if false; then :; else cat ~/.ssh/id_rsa; fi"
+expect = "deny"
+[[case]]
+command = "if git push --force origin x; then echo ok; fi"
+expect = "deny"
+[[case]]
+command = "while git push --force origin x; do sleep 1; done"
+expect = "deny"
+[[case]]
+command = "! cat ~/.ssh/id_rsa"
+expect = "deny"
+[[case]]
+command = "{ cat ~/.ssh/id_rsa; }"
+expect = "deny"
+[[case]]
+command = "f() { cat ~/.ssh/id_rsa; }; f"
+expect = "deny"
+[[case]]
+command = "function f { git push --force origin x; }"
+expect = "deny"
+[[case]]
+command = "case x in a) git push --force origin x;; esac"
+expect = "deny"
+[[case]]
+command = "case x in a) :;; b) cat ~/.ssh/id_rsa;; esac"
+expect = "deny"
+[[case]]
+command = "for i in 1; do HUSKY=0 git commit -m x; done"
+expect = "deny"
+[[case]]
+command = "for i in 1; do timeout 5 git push --force origin x; done"
+expect = "deny"
+[[case]]
+command = "for i in 1; do for j in 2; do cat ~/.ssh/id_rsa; done; done"
+expect = "deny"
+[[case]]
+command = "for i in 1; do echo x; done > ~/.bashrc"
+expect = "deny"
+[[case]]
+command = "for f in $(cat ~/.ssh/id_rsa); do echo $f; done"
+expect = "deny"
+[[case]]
+command = "for f in a b; do echo $f; done"
+expect = "none"
+[[case]]
+command = "for cat in ~/.ssh/id_rsa; do echo x; done"
+expect = "none"
+[[case]]
+command = "case ~/.ssh/id_rsa in *) echo x;; esac"
+expect = "none"
+[[case]]
+command = "if [ -f x ]; then git push origin feature; fi"
+expect = "none"
+[[case]]
+command = "while read -r l; do echo $l; done < notes.txt"
+expect = "none"
+[[case]]
+command = "select v in a b; do cat ~/.ssh/id_rsa; done"
+expect = "deny"
+[[case]]
+command = "select v in a b; do echo $v; done"
+expect = "none"

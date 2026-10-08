@@ -4,9 +4,10 @@
 This is not a shell parser. It recognizes the operators an agent actually
 writes (&&, ||, ;, |, &, newlines, subshell parentheses), drops heredoc
 bodies, looks inside $(...), backticks and `bash -c '...'`, and peels off
-wrappers (env, timeout, xargs, sudo...) so that `timeout 5 git push ...` is
-judged as `git push ...`. When the line cannot be tokenized at all it says
-so, and the caller decides how careful to be.
+reserved words (do, then, !, {...) and wrappers (env, timeout, xargs,
+sudo...) so that `do timeout 5 git push ...` is judged as `git push ...`.
+When the line cannot be tokenized at all it says so, and the caller
+decides how careful to be.
 """
 
 import re
@@ -55,6 +56,28 @@ WRAPPERS = {
 }
 # Wrappers followed by one positional argument before the command.
 WRAPPER_POSITIONAL = {"timeout": 1, "flock": 1}
+# Reserved words that open, continue or close a compound command. In command
+# position each is followed by the command that actually runs (`do git push`,
+# `then cat`, `! cat`, `{ cat`), so they are dropped like a wrapper is.
+RESERVED_PREFIX = {
+    "!",
+    "{",
+    "}",
+    "if",
+    "then",
+    "elif",
+    "else",
+    "fi",
+    "while",
+    "until",
+    "do",
+    "done",
+    "esac",
+}
+# Reserved words whose words up to the next operator run nothing: the loop
+# variable and word list of `for` and `select`, the word and first pattern
+# of `case`. What they expand ($(...)) is still read, as its own command.
+RESERVED_HEADER = {"for", "select", "case"}
 SHELLS = {"bash", "sh", "zsh", "dash"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
@@ -142,12 +165,23 @@ def _tokens(text):
 
 
 def _unwrap(words):
-    """Drop leading assignments and wrappers; return (words, env, wrapped)."""
+    """Drop leading reserved words, assignments and wrappers; return
+    (words, env, wrapped)."""
     env, wrapped = {}, False
     words = list(words)
     changed = True
     while words and changed:
         changed = False
+        if words[0] in RESERVED_HEADER:
+            return [], env, wrapped
+        if words[0] == "function" and len(words) > 1:
+            # `function name { ...`: the name is not a command, the body is.
+            del words[:2]
+            changed = True
+            continue
+        while words and words[0] in RESERVED_PREFIX:
+            words.pop(0)
+            changed = True
         while words and ASSIGNMENT.match(words[0]):
             key, _, value = words.pop(0).partition("=")
             env[key] = value
