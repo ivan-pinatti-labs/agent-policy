@@ -1058,3 +1058,9 @@ expect = "none"
 [[case]]
 command = "while read -r l; do echo $l; done < notes.txt"
 expect = "none"
+[[case]]
+command = "select v in a b; do cat ~/.ssh/id_rsa; done"
+expect = "deny"
+[[case]]
+command = "select v in a b; do echo $v; done"
+expect = "none"
