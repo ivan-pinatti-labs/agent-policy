@@ -1249,13 +1249,13 @@ expect = "ask"
 command = "S=/tmp/x; builtin read S < f; cat $S/id_rsa"
 expect = "ask"
 [[case]]
-command = "S=/tmp/x; command printf -v S %s /home/user/.ssh; cat $S/id_rsa"
+command = "S=/tmp/x; command printf -v S %s ~/.ssh; cat $S/id_rsa"
 expect = "ask"
 [[case]]
 command = "S=/tmp/x; time read S < f; cat $S/id_rsa"
 expect = "ask"
 [[case]]
-command = "S=/tmp/x; printf -vS %s /home/user/.ssh; cat $S/id_rsa"
+command = "S=/tmp/x; printf -vS %s ~/.ssh; cat $S/id_rsa"
 expect = "ask"
 [[case]]
 command = "S=/tmp/x; $(echo read) S < f; cat $S/id_rsa"
@@ -1267,5 +1267,11 @@ expect = "ask"
 command = "S=/tmp/x; trap 'read S < f' DEBUG; cat $S/id_rsa"
 expect = "ask"
 [[case]]
+command = "S=/tmp/x; ${X/a/a} S < f; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; $X/tool S < f; cat $S/id_rsa"
+expect = "ask"
+[[case]]
 command = "S=/tmp/x; $S/tool --flag; cat $S/out"
-expect = "none"
+expect = "ask"

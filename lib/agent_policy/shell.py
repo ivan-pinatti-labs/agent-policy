@@ -430,9 +430,9 @@ class Variables:
         commands = [_command_words(tokens)[:1] for tokens, _ in raw]
         heads = [c[0].rsplit("/", 1)[-1] if c else "" for c in commands]
         # A command whose name is computed when it runs (`$X S`, `$(echo
-        # read) S`) could be any of the setters, unless its name holds a
-        # literal `/`, which only ever names a file, never a builtin.
-        dynamic = any(c and re.search(r"[$`]", c[0]) and "/" not in c[0] for c in commands)
+        # read) S`, `${X/a/b} S`) could be any of the setters: even `$X/tool`
+        # can split into `read S x/tool`.
+        dynamic = any(c and re.search(r"[$`]", c[0]) for c in commands)
         self.disabled = (
             dynamic
             or any(h in ANYTHING_SETTERS for h in heads)
