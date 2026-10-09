@@ -642,6 +642,10 @@ def _query_operands(name, args):
         elif opt in valued:
             supplied = supplied or opt in QUERY_FILTER_GIVEN[name]
             i += 0 if eq else valued[opt]
+        elif name == "jq" and arg.startswith("-L") and len(arg) > 2:
+            # The library path attached (-L followed by it), checked before the -f
+            # cluster test: a path such as -L/foo holds an f.
+            files.append(arg[2:])
         elif name == "jq" and _jq_from_file(arg, opt):
             from_file = True
             if eq:

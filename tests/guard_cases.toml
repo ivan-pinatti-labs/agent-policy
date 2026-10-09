@@ -1275,3 +1275,9 @@ expect = "none"
 [[case]]
 command = "jq -rcS --tab --seq .a data.json"
 expect = "none"
+[[case]]
+command = "jq -L~/.claude -n 'import \".credentials\" as $c; $c'"
+expect = "deny"
+[[case]]
+command = "jq -L/usr/share/jq/foo -n .x"
+expect = "none"
