@@ -12,6 +12,6 @@
 # HashiCorp, enabled by a source line here), then the tool's official
 # container image. Nothing pins a package version: the digest fixes what this
 # builds on, and apt resolves the current security fixes on top.
-ARG L2_IMAGE=ghcr.io/ivan-pinatti-labs/airlock-l2@sha256:4701c3e1e9b98bf0184be8b761995510ed26c34b407f95d9d17d4b33babc9046
+ARG L2_IMAGE=ghcr.io/ivan-pinatti-labs/airlock-l2@sha256:5c7f15558e4fa0d262437917402f5de09f09cf57f9832ac1601f24982f451c9b
 # hadolint ignore=DL3006
 FROM ${L2_IMAGE}
