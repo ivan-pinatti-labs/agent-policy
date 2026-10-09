@@ -218,6 +218,24 @@
     "yamllint",
     "zizmor",
     "zprofile",
-    "zshenv"
+    "zshenv",
+    "coproc",
+    "mapfile",
+    "pushd",
+    "popd",
+    "readarray",
+    "getopts",
+    "OLDPWD",
+    "SRANDOM",
+    "EPOCHSECONDS",
+    "EPOCHREALTIME",
+    "BASHPID",
+    "PPID",
+    "EUID",
+    "HISTCMD",
+    "FUNCNAME",
+    "SHELLOPTS",
+    "BASHOPTS",
+    "CDPATH"
   ]
 }

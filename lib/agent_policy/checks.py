@@ -62,7 +62,7 @@ def evaluate(command, cwd, env=None, inspector=containers.inspect):
         "protected": containers.protected_paths(env),
     }
     try:
-        segs = list(segments(command))
+        segs = list(segments(command, cwd=ctx["cwd"]))
     except ParseError:
         return Finding("high", "the command line could not be parsed, so it was not checked")
     worst = None
@@ -124,7 +124,7 @@ def approve(command, cwd, allowed, env=None, inspector=containers.inspect):
     if not allowed:
         return False
     try:
-        segs = list(segments(command))
+        segs = list(segments(command, cwd=cwd))
     except ParseError:
         return False
     prefixes = {tuple(p) for p in allowed}

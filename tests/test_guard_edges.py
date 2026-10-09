@@ -61,6 +61,9 @@ class ReservedWords(unittest.TestCase):
         self.assertIn(["cat", "x"], self.commands("select v in a; do cat x; done"))
         self.assertIn(["cat", "x"], self.commands("function f { cat x; }"))
 
+    def test_a_bare_function_is_kept_as_a_command(self):
+        self.assertEqual([["function"]], self.commands("function"))
+
 
 class EngineInspect(unittest.TestCase):
     def setUp(self):

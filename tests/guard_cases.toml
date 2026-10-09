@@ -1264,6 +1264,218 @@ expect = "deny"
 [[case]]
 command = "select v in a b; do echo $v; done"
 expect = "none"
+
+# A variable the line itself certainly sets is judged at its value; one whose
+# value is not certain where it is used still asks.
+[[case]]
+command = "S=/tmp/x; cat $S/a"
+expect = "none"
+[[case]]
+command = "S=/tmp/x; cat ${S}/a"
+expect = "none"
+[[case]]
+command = "S=/tmp/x && sed -n 1p $S/a"
+expect = "none"
+[[case]]
+command = "S=/tmp/x; grep -i foo $S/a > $S/b"
+expect = "none"
+[[case]]
+command = "gh pr view 1 > /tmp/x/pr.md; S=/tmp/x; grep -i foo $S/pr.md | cut -d: -f1"
+expect = "none"
+[[case]]
+command = "S=/tmp/x; F=$S/out.txt; cat $F"
+expect = "none"
+[[case]]
+command = "S=/tmp/x; echo \"n=$(grep -c y $S/a)\""
+expect = "none"
+[[case]]
+command = "S=/tmp/x; bash -c \"cat $S/a\""
+expect = "none"
+[[case]]
+command = "for f in a.txt b.txt; do cat $f; done"
+expect = "none"
+[[case]]
+command = "S=/tmp/x; for f in a b; do grep y $S/$f; done"
+expect = "none"
+[[case]]
+command = "podman run --rm -v $PWD:/work:ro,Z img"
+expect = "none"
+[[case]]
+command = "S=/home/user/.ssh; cat $S/id_rsa"
+expect = "deny"
+[[case]]
+command = "D=/home/user/.claude; cat $D/.credentials.json"
+expect = "deny"
+[[case]]
+command = "P=/home/user/.bashrc; echo x > $P"
+expect = "deny"
+[[case]]
+command = "R=--force; git push $R origin x"
+expect = "deny"
+[[case]]
+command = "S=/home/user/.ssh; echo \"$(cat $S/id_rsa)\""
+expect = "deny"
+[[case]]
+command = "for f in notes.txt /home/user/.ssh/id_rsa; do cat $f; done"
+expect = "deny"
+[[case]]
+command = "podman run --rm -v $PWD:/w img"
+cwd = "/home/user"
+expect = "deny"
+[[case]]
+command = "HOME=/tmp; cat $HOME/.ssh/id_rsa"
+expect = "deny"
+[[case]]
+command = "cat $S/a"
+expect = "ask"
+[[case]]
+command = "cat $S/a; S=/tmp/x"
+expect = "ask"
+[[case]]
+command = "cd /tmp && S=/tmp/x; cat $S/a"
+expect = "ask"
+[[case]]
+command = "false || S=/tmp/x; cat $S/a"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; false && S=/home/user/.ssh; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; S=/home/user/.ssh; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; S+=/y; cat $S"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; S[1]=y; cat $S"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; read S; cat $S/a"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; printf -v S %s /home/user/.ssh; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; declare -n R=S; R=/home/user/.ssh; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; trap 'S=/home/user/.ssh' DEBUG; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; source env.sh; cat $S/a"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; eval 'true'; cat $S/a"
+expect = "ask"
+[[case]]
+command = "IFS=/; S=/tmp/x; cat $S"
+expect = "ask"
+[[case]]
+command = "( S=/tmp/x ); cat $S/a"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x | cat $S/a"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x & cat $S/a"
+expect = "ask"
+[[case]]
+command = "if true; then S=/tmp/x; fi; cat $S/a"
+expect = "ask"
+[[case]]
+command = "f() { S=/tmp/x; }; f; cat $S/a"
+expect = "ask"
+[[case]]
+command = "function f { :; S=/tmp/x; }; cat $S/a"
+expect = "ask"
+[[case]]
+command = "S=\"/tmp/a b\"; cat $S"
+expect = "ask"
+[[case]]
+command = "S=/tmp/*; cat $S"
+expect = "ask"
+[[case]]
+command = "S=~/x; cat $S"
+expect = "ask"
+[[case]]
+command = "S=$(pwd); cat $S/a"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; cat ${S:-/tmp/y}/a"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; cat '$S/a'"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; cat \\$S/a"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; bash -c 'cat $S/a'"
+expect = "ask"
+[[case]]
+command = "x=$(cat $T/a); T=/tmp/x"
+expect = "ask"
+[[case]]
+command = "cd /tmp && cat $PWD/a"
+expect = "ask"
+[[case]]
+command = "for f in a b; do cat $f; done; cat $f"
+expect = "ask"
+[[case]]
+command = "for f in $(ls); do cat $f; done"
+expect = "ask"
+[[case]]
+command = "for f in a b; do f=/tmp/y; cat $f; done"
+expect = "ask"
+[[case]]
+command = "while read -r f; do cat $f; done < list.txt"
+expect = "ask"
+[[case]]
+command = "for a in x y; do for b in p q; do cat $a/$b; done; done"
+expect = "none"
+[[case]]
+command = "for a in x y; do for b in p /home/user/.ssh; do cat $b/id_rsa; done; done"
+expect = "deny"
+[[case]]
+command = "for a in 1 2 3 4 5 6; do for b in 1 2 3 4 5 6; do cat $a/$b; done; done"
+expect = "ask"
+[[case]]
+command = "for f in a b c d e f g h i j k l m n o p q; do cat $f; done"
+expect = "ask"
+[[case]]
+command = "for f; do cat $f; done"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; builtin read S < f; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; command printf -v S %s ~/.ssh; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; time read S < f; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; printf -vS %s ~/.ssh; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; $(echo read) S < f; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; X=read; $X S < f; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; trap 'read S < f' DEBUG; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; ${X/a/a} S < f; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; $X/tool S < f; cat $S/id_rsa"
+expect = "ask"
+[[case]]
+command = "S=/tmp/x; $S/tool --flag; cat $S/out"
+expect = "ask"
+
 # An option jq's parser here does not know: the first positional is judged
 # as a path too, rather than dropped as the filter.
 [[case]]

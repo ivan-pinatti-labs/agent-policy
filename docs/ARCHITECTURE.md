@@ -203,6 +203,30 @@ write:
    the name, so its body is judged and the name is not.
 5. `bash -c '...'`, `sh -c '...'` and `eval '...'` are read again as
    command lines.
+6. A variable the line itself sets is replaced by its value where that
+   value is certain, so `S=/tmp/x; grep y $S/out` is judged as
+   `grep y /tmp/x/out` rather than asked about. The rule is that the
+   substituted line gets exactly the verdict the line written out with the
+   value would get, so a credential behind a variable is refused as it is
+   when written out. The value is certain when the variable is set once on
+   the whole line, by an assignment that is a statement of its own at the
+   top level and runs whatever ran before it (after `;`, a newline or the
+   start of the line, not `&&`, `||`, a pipe, a subshell, a loop, a
+   condition or a function), to a literal value (letters, digits and
+   `_./:@%+,=-`, once the line's other certain variables are substituted),
+   and is used after that statement. A `for` loop over literal words gives
+   its variable each of those words in the loop's body, judged once per
+   word. `$PWD` is the working directory unless the line changes it.
+   Nothing else is substituted: a second assignment, `read`, `unset`,
+   `printf -v` (also behind `builtin` or `command`), `declare` (which can
+   make a name a reference to another), `eval`, `source` or `trap`
+   anywhere on the line, a command whose name is computed when it runs
+   (`$X args`), an assignment to IFS, or a use inside single quotes or
+   after a backslash leaves the variable as it is, and the guard asks
+   about the path. A `$(...)` body, which the guard reads
+   apart from where it sits, gets only the variables set before anything
+   else on the line. HOME and the variables the shell itself sets are never
+   taken from the line.
 
 A line that cannot be tokenized (unbalanced quotes) gets an `ask`, and so
 does one that needs more than four levels of reading again: a script
