@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 from agent_policy import containers
 from agent_policy.checks import evaluate
+from agent_policy.shell import segments
 
 
 def no_engine(*_args, **_kwargs):
@@ -35,6 +36,30 @@ class WithoutProtectedPaths(unittest.TestCase):
     def test_targeted_and_all(self):
         self.assertEqual("none", self.decide("podman stop --all"))
         self.assertEqual("none", self.decide("podman stop web"))
+
+
+class ReservedWords(unittest.TestCase):
+    """A loop or case header runs nothing, so it yields no command; the
+    command after a reserved word is yielded on its own."""
+
+    def commands(self, line):
+        return [seg.words for seg in segments(line)]
+
+    def test_headers_yield_no_command(self):
+        for line in (
+            "for cat in a; do :; done",
+            "select cat in a; do :; done",
+            "case cat in a) :;; esac",
+        ):
+            with self.subTest(line=line):
+                self.assertFalse(any(w and w[0] == "cat" for w in self.commands(line)))
+                self.assertFalse(
+                    any(w and w[0] in ("for", "select", "case") for w in self.commands(line))
+                )
+
+    def test_the_command_after_a_reserved_word(self):
+        self.assertIn(["cat", "x"], self.commands("select v in a; do cat x; done"))
+        self.assertIn(["cat", "x"], self.commands("function f { cat x; }"))
 
 
 class EngineInspect(unittest.TestCase):
