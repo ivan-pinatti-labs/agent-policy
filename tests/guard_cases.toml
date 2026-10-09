@@ -983,6 +983,206 @@ expect = "deny"
 command = "tee /home/user/.claude/projects/p/memory/note.md"
 expect = "deny"
 
+# More commands that print a file's content: each reads a credential only
+# with a refusal, and a project file freely.
+[[case]]
+command = "diff /dev/null ~/.ssh/id_ed25519"
+expect = "deny"
+[[case]]
+command = "diff -u --from-file=~/.netrc notes.md"
+expect = "deny"
+[[case]]
+command = "sdiff ~/.pgpass notes.md"
+expect = "deny"
+[[case]]
+command = "diff3 a b ~/.git-credentials"
+expect = "deny"
+[[case]]
+command = "comm ~/.pgpass /dev/null"
+expect = "deny"
+[[case]]
+command = "join ~/.git-credentials ~/.git-credentials"
+expect = "deny"
+[[case]]
+command = "paste ~/.netrc"
+expect = "deny"
+[[case]]
+command = "look a ~/.netrc"
+expect = "deny"
+[[case]]
+command = "expand ~/.aws/credentials"
+expect = "deny"
+[[case]]
+command = "unexpand ~/.aws/credentials"
+expect = "deny"
+[[case]]
+command = "pr ~/.netrc"
+expect = "deny"
+[[case]]
+command = "iconv -f utf8 -t ascii ~/.netrc"
+expect = "deny"
+[[case]]
+command = "shuf ~/.netrc"
+expect = "deny"
+[[case]]
+command = "csplit ~/.netrc 2"
+expect = "deny"
+[[case]]
+command = "diff -u old.txt new.txt"
+expect = "none"
+[[case]]
+command = "paste a.csv b.csv"
+expect = "none"
+
+# jq and yq: the filter is not a path, the files they read are.
+[[case]]
+command = "jq . ~/.claude/.credentials.json"
+expect = "deny"
+[[case]]
+command = "jq -r .token < ~/.claude/.credentials.json"
+expect = "deny"
+[[case]]
+command = "jq -f ~/.ssh/id_ed25519 data.json"
+expect = "deny"
+[[case]]
+command = "jq --from-file=~/.ssh/id_ed25519 data.json"
+expect = "deny"
+[[case]]
+command = "jq -f filter.jq ~/.netrc"
+expect = "deny"
+[[case]]
+command = "jq -n --rawfile t ~/.netrc $t"
+expect = "deny"
+[[case]]
+command = "jq -n --slurpfile t ~/.claude/.credentials.json .x"
+expect = "deny"
+[[case]]
+command = "jq --arg k v .a -- ~/.netrc"
+expect = "deny"
+[[case]]
+command = "yq . ~/.kube/config"
+expect = "deny"
+[[case]]
+command = "yq eval -o json .users ~/.kube/config"
+expect = "deny"
+[[case]]
+command = "yq --expression .a ~/.kube/config"
+expect = "deny"
+[[case]]
+command = "jq .name package.json"
+expect = "none"
+[[case]]
+command = "jq -r --indent=2 .name package.json"
+expect = "none"
+[[case]]
+command = "jq --arg n v --argjson m 1 .a package.json"
+expect = "none"
+[[case]]
+command = "jq -n --args $ARGS.positional a b"
+expect = "none"
+[[case]]
+command = "jq -f"
+expect = "none"
+[[case]]
+command = "yq e -o json -f extract .a config.yaml"
+expect = "none"
+[[case]]
+command = "jq -n .x"
+expect = "none"
+
+# jq reads options after --args too, and -f in a short cluster; diff takes
+# any unambiguous prefix of a long option.
+[[case]]
+command = "jq -n --args .x --rawfile t ~/.netrc a"
+expect = "deny"
+[[case]]
+command = "jq -nf ~/.netrc data.json"
+expect = "deny"
+[[case]]
+command = "jq -rf ~/.ssh/id_ed25519 data.json"
+expect = "deny"
+[[case]]
+command = "jq ~/.ssh/id_ed25519 data.json -f"
+expect = "deny"
+[[case]]
+command = "jq --args .x -- a ~/.netrc"
+expect = "none"
+[[case]]
+command = "jq -rn .x"
+expect = "none"
+[[case]]
+command = "diff --from=~/.netrc /dev/null"
+expect = "deny"
+[[case]]
+command = "diff --to-f=~/.netrc /dev/null"
+expect = "deny"
+[[case]]
+command = "sdiff --output=merged.txt a b"
+expect = "none"
+[[case]]
+command = "diff --unified=3 --label=old a b"
+expect = "none"
+[[case]]
+command = "yq --from-file=~/.ssh/id_ed25519 config.yaml"
+expect = "deny"
+[[case]]
+command = "yq --from-file filter.yq config.yaml"
+expect = "none"
+[[case]]
+command = "jq -n --rawfile t"
+expect = "none"
+
+# yq's load operators read a file named inside the expression; yq takes a
+# file where the expression would go; jq's library path is read by import;
+# any reader's --option=VALUE can name a file.
+[[case]]
+command = "yq -n 'load_str(strenv(HOME) + \"/.netrc\")'"
+expect = "ask"
+[[case]]
+command = "yq '.a = load(\"other.yaml\")' config.yaml"
+expect = "ask"
+[[case]]
+command = "yq --security-disable-file-ops '.a = load(\"other.yaml\")' config.yaml"
+expect = "none"
+[[case]]
+command = "yq ~/.netrc"
+expect = "deny"
+[[case]]
+command = "yq eval ~/.kube/config"
+expect = "deny"
+[[case]]
+command = "yq '.a | . as $x | $x' config.yaml"
+expect = "none"
+[[case]]
+command = "jq -L ~/.claude -n 'import \".credentials\" as $c; $c'"
+expect = "deny"
+[[case]]
+command = "jq --library-path=~/.ssh -n 1"
+expect = "deny"
+[[case]]
+command = "shuf --random-source=~/.netrc notes.txt"
+expect = "deny"
+[[case]]
+command = "sort --files0-from=~/.netrc"
+expect = "deny"
+[[case]]
+command = "sort --key=2 --field-separator=, data.csv"
+expect = "none"
+[[case]]
+command = "yq 'eval(.expression)' project.yaml"
+expect = "ask"
+[[case]]
+command = "jq --run-tests ~/.netrc"
+expect = "deny"
+[[case]]
+command = "jq --run-tests tests.jq"
+expect = "none"
+[[case]]
+command = "yq $DIR/.netrc"
+expect = "ask"
+[[case]]
+command = "yq $HOME/.netrc"
+expect = "deny"
 # A command after a reserved word (a loop body, a condition, a group) is
 # judged like the same command on its own; a for, select or case header runs
 # nothing and is not judged as a command.
@@ -1063,4 +1263,21 @@ command = "select v in a b; do cat ~/.ssh/id_rsa; done"
 expect = "deny"
 [[case]]
 command = "select v in a b; do echo $v; done"
+expect = "none"
+# An option jq's parser here does not know: the first positional is judged
+# as a path too, rather than dropped as the filter.
+[[case]]
+command = "jq --unknown ~/.netrc"
+expect = "deny"
+[[case]]
+command = "jq --unknown .a data.json"
+expect = "none"
+[[case]]
+command = "jq -rcS --tab --seq .a data.json"
+expect = "none"
+[[case]]
+command = "jq -L~/.claude -n 'import \".credentials\" as $c; $c'"
+expect = "deny"
+[[case]]
+command = "jq -L/usr/share/jq/foo -n .x"
 expect = "none"

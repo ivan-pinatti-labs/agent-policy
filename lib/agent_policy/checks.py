@@ -257,6 +257,23 @@ READERS = {
     "fold",
     "fmt",
     "gpg",
+    # Print a file's content too: diff and its kin show every line that
+    # differs (all of them against /dev/null), the rest print lines as they go.
+    "diff",
+    "diff3",
+    "sdiff",
+    "comm",
+    "join",
+    "paste",
+    "look",
+    "expand",
+    "unexpand",
+    "pr",
+    "iconv",
+    "shuf",
+    "csplit",
+    "jq",
+    "yq",
 }
 WRITERS = {"cp", "mv", "install", "rsync", "ln", "tee", "dd", "truncate", "sed", "yq", "jq"}
 
@@ -283,9 +300,28 @@ def _check(seg, ctx):
         "docker": _engine,
         "podman-compose": _compose,
         "docker-compose": _compose,
+        "yq": _yq,
     }.get(seg.name)
     if handler:
         yield from handler(seg, ctx)
+
+
+# yq's load operators read a file named inside the expression, which can be
+# built at run time (load_str(strenv(HOME) + "/.netrc")), so no path is there
+# to judge; eval runs an expression read from the data, which can hold one.
+# --security-disable-file-ops turns them off.
+YQ_LOAD = re.compile(r"\b(?:load(?:_[a-z0-9]+)?|eval)\s*\(")
+
+
+def _yq(seg, ctx):
+    if "--security-disable-file-ops" in seg.words:
+        return
+    if any(YQ_LOAD.search(word) for word in seg.words[1:]):
+        yield Finding(
+            "high",
+            "yq loads a file named inside its expression, which this guard cannot judge;"
+            " add --security-disable-file-ops, or read the file with yq directly",
+        )
 
 
 # Redirections
@@ -505,11 +541,146 @@ def _program_operands(name, args):
     return files + positional
 
 
+# jq and yq: the first positional is the filter, unless a file supplies it.
+# Options that take a value, by how many words follow them; the files some
+# of them read; and yq's subcommands, which come before the filter.
+QUERY_VALUED = {
+    "jq": {"--arg": 2, "--argjson": 2, "--indent": 1},
+    "yq": {
+        "-o": 1,
+        "--output-format": 1,
+        "-p": 1,
+        "--input-format": 1,
+        "-I": 1,
+        "--indent": 1,
+        "--expression": 1,
+        "-f": 1,
+        "--front-matter": 1,
+        "--split-exp": 1,
+    },
+}
+QUERY_FILE = {
+    # jq's library path is judged too: import and include read files from it.
+    "jq": {"--rawfile": 1, "--slurpfile": 1, "-L": 0, "--library-path": 0},
+    "yq": {"--from-file": 0},
+}
+# yq options that supply the filter, so no positional is the filter. yq's
+# -f is --front-matter, not a filter file.
+QUERY_FILTER_GIVEN = {"jq": set(), "yq": {"--from-file", "--expression"}}
+YQ_SUBCOMMANDS = {"e", "eval", "ea", "eval-all"}
+# jq's options that take no value. Any other option is one this parser does
+# not know, which could take a value and shift which word is the filter, so
+# then the first positional is judged as a path too (failing closed).
+JQ_FLAGS = {
+    "--seq",
+    "--stream",
+    "--stream-errors",
+    "--slurp",
+    "--raw-input",
+    "--raw-output",
+    "--raw-output0",
+    "--join-output",
+    "--ascii-output",
+    "--null-input",
+    "--compact-output",
+    "--tab",
+    "--color-output",
+    "--monochrome-output",
+    "--sort-keys",
+    "--exit-status",
+    "--unbuffered",
+    "--binary",
+    "--version",
+    "--help",
+    "--build-configuration",
+}
+JQ_SHORT_FLAGS = set("nrjacsCMSeRbhV0")  # cspell:disable-line
+
+
+def _jq_known_flag(arg):
+    if arg.startswith("--"):
+        return arg in JQ_FLAGS
+    return set(arg[1:]) <= JQ_SHORT_FLAGS
+
+
+def _jq_from_file(arg, opt):
+    """jq's -f or --from-file, alone or in a short cluster (-nf, -rf): a flag
+    that makes the first positional the filter's file, wherever it comes."""
+    if opt == "--from-file":
+        return True
+    return arg[:1] == "-" and arg[1:2] != "-" and "f" in arg[1:]
+
+
+def _query_operands(name, args):
+    """The file operands of jq or yq: the files options read (--rawfile,
+    --slurpfile, yq's --from-file), then the positionals. The first
+    positional is the filter, or for jq -f the filter's file; yq's subcommand
+    comes before it. jq keeps reading options after --args and --jsonargs,
+    but the positionals after them are values, not files."""
+    valued, file_options = QUERY_VALUED[name], QUERY_FILE[name]
+    files, positional, values, supplied, from_file, i = [], [], False, False, False, 0
+    while i < len(args):
+        arg = args[i]
+        opt, eq, value = arg.partition("=")
+        if arg == "--":
+            positional += [(word, values) for word in args[i + 1 :]]
+            break
+        if name == "jq" and arg in ("--args", "--jsonargs"):
+            values = True
+        elif name == "jq" and arg == "--run-tests":
+            # Its file is the first positional, read as tests, not a filter.
+            from_file = True
+        elif opt in file_options:
+            # The file is the last of the option's words: --rawfile NAME FILE.
+            skip = file_options[opt]
+            if eq and skip == 0:
+                files.append(value)
+            elif not eq and i + 1 + skip < len(args):
+                files.append(args[i + 1 + skip])
+            i += 0 if eq else skip + 1
+            supplied = supplied or opt in QUERY_FILTER_GIVEN[name]
+        elif opt in valued:
+            supplied = supplied or opt in QUERY_FILTER_GIVEN[name]
+            i += 0 if eq else valued[opt]
+        elif name == "jq" and arg.startswith("-L") and len(arg) > 2:
+            # The library path attached (-L followed by it), checked before the -f
+            # cluster test: a path such as -L/foo holds an f.
+            files.append(arg[2:])
+        elif name == "jq" and _jq_from_file(arg, opt):
+            from_file = True
+            if eq:
+                files.append(value)
+        elif arg == "-" or not arg.startswith("-"):
+            positional.append((arg, values))
+        elif name == "jq" and not _jq_known_flag(arg):
+            from_file = True
+        i += 1
+    if name == "yq" and positional[:1] and positional[0][0] in YQ_SUBCOMMANDS:
+        positional = positional[1:]
+    if positional and not supplied:
+        program, positional = positional[0][0], positional[1:]
+        # yq takes a file where the expression would go (yq ~/.netrc prints
+        # it), so its first positional is judged as a path as well, unless it
+        # holds an expansion and no slash: a filter variable such as $x. One
+        # shaped like a path ($DIR/.netrc) is judged, and so asks.
+        path_shaped = program.startswith("$") and "/" in program
+        if from_file or (name == "yq" and (not _unresolved(program) or path_shaped)):
+            files.append(program)
+    return files + [word for word, is_value in positional if not is_value]
+
+
 def _operands(seg):
     """The path operands of a reader."""
     if seg.name in PROGRAM_OPTIONS:
         return _program_operands(seg.name, seg.words[1:])
-    return list(_paths(seg.words[1:]))
+    if seg.name in QUERY_VALUED:
+        return _query_operands(seg.name, seg.words[1:])
+    # The value of any --option=VALUE is judged as a path too: some read a
+    # file (shuf and sort --random-source=, sort --files0-from=, diff
+    # --from-file=), GNU takes any unambiguous prefix of a long option (--from=
+    # is --from-file=), and a value that is not a credential path passes.
+    paths = list(_paths(seg.words[1:]))
+    return paths + [w.split("=", 1)[1] for w in seg.words[1:] if w.startswith("--") and "=" in w]
 
 
 def _reader(seg, ctx):
