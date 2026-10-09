@@ -218,10 +218,12 @@ write:
    its variable each of those words in the loop's body, judged once per
    word. `$PWD` is the working directory unless the line changes it.
    Nothing else is substituted: a second assignment, `read`, `unset`,
-   `printf -v`, `declare` (which can make a name a reference to another),
-   `eval` or `source` anywhere on the line, an assignment to IFS, or a use
-   inside single quotes or after a backslash leaves the variable as it is,
-   and the guard asks about the path. A `$(...)` body, which the guard reads
+   `printf -v` (also behind `builtin` or `command`), `declare` (which can
+   make a name a reference to another), `eval`, `source` or `trap`
+   anywhere on the line, a command whose name is computed when it runs
+   (`$X args`), an assignment to IFS, or a use inside single quotes or
+   after a backslash leaves the variable as it is, and the guard asks
+   about the path. A `$(...)` body, which the guard reads
    apart from where it sits, gets only the variables set before anything
    else on the line. HOME and the variables the shell itself sets are never
    taken from the line.

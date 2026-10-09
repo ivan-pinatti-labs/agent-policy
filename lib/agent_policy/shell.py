@@ -308,8 +308,10 @@ def _nested_script(seg):
 # - Nothing else on the line could change it: no second assignment (an
 #   array element or `+=` included), no `read`, `unset`, `export`,
 #   `declare`, `local`, `readonly`, `printf -v`, `mapfile` or the like
-#   naming it, and no `eval`, `source` or `.` (which could set anything) and
-#   no assignment to IFS (which changes word splitting) anywhere on the line.
+#   naming it (behind a wrapper such as `builtin` or `command` too), no
+#   `eval`, `source`, `.` or `trap` (which could set anything), no command
+#   whose name is computed when it runs (`$X`, `$(...)`), and no assignment
+#   to IFS (which changes word splitting) anywhere on the line.
 # - It is never written inside single quotes or with an escaped `$`, where
 #   the shell does not expand it: the tokens no longer record the quoting, so
 #   one such use rules the name out everywhere.
@@ -340,9 +342,11 @@ SETTERS = {
     "coproc",
 }
 # Commands that could set any variable: eval and source run code the line
-# does not show, and declare, typeset and local can make a name a reference
-# to another (-n), so an assignment to one changes the other.
-ANYTHING_SETTERS = {"eval", "source", ".", "declare", "typeset", "local"}
+# does not show, trap runs its string in this shell (before every command,
+# with DEBUG), enable can load a builtin, and declare, typeset and local can
+# make a name a reference to another (-n), so an assignment to one changes
+# the other.
+ANYTHING_SETTERS = {"eval", "source", ".", "trap", "enable", "declare", "typeset", "local"}
 # Never taken from the line: HOME is the guard's own, the others are set by
 # the shell itself, are read only, or change how the line runs.
 NEVER_RESOLVED = {
@@ -423,9 +427,16 @@ class Variables:
     def __init__(self, text, raw, cwd):
         self.text, self.raw = text, raw
         self.ruled_out = _not_expanded(text) | NEVER_RESOLVED
-        heads = [_head(tokens) for tokens, _ in raw]
-        self.disabled = any(h in ANYTHING_SETTERS for h in heads) or bool(
-            re.search(r"(?<![A-Za-z0-9_$-])IFS(\+?=|\[)", text)
+        commands = [_command_words(tokens)[:1] for tokens, _ in raw]
+        heads = [c[0].rsplit("/", 1)[-1] if c else "" for c in commands]
+        # A command whose name is computed when it runs (`$X S`, `$(echo
+        # read) S`) could be any of the setters, unless its name holds a
+        # literal `/`, which only ever names a file, never a builtin.
+        dynamic = any(c and re.search(r"[$`]", c[0]) and "/" not in c[0] for c in commands)
+        self.disabled = (
+            dynamic
+            or any(h in ANYTHING_SETTERS for h in heads)
+            or bool(re.search(r"(?<![A-Za-z0-9_$-])IFS(\+?=|\[)", text))
         )
         base = {}
         if (
@@ -447,9 +458,12 @@ class Variables:
         pattern = r"(?<![A-Za-z0-9_$-])" + re.escape(name) + r"(\+?=|\[)"
         count = len(re.findall(pattern, self.text))
         for tokens, _ in self.raw:
-            words = _skip_reserved(tokens)
-            if words and words[0] in SETTERS and name in words[1:]:
-                count += 1
+            # The command behind a wrapper (`builtin read S`, `command
+            # printf -v S`), and a loop header, which _unwrap drops.
+            for words in (_command_words(tokens), _skip_reserved(tokens)):
+                if words and words[0] in SETTERS and any(_names(w, name) for w in words[1:]):
+                    count += 1
+                    break
         return count
 
     def _walk(self, base):
@@ -562,6 +576,12 @@ def _skip_reserved(tokens):
     return words
 
 
-def _head(tokens):
+def _command_words(tokens):
     words, _, _ = _unwrap(_split_redirects(tokens)[0])
-    return words[0].rsplit("/", 1)[-1] if words else ""
+    return words
+
+
+def _names(word, name):
+    """Whether a setter's argument names `name`: the word itself, or an
+    option with it attached (`printf -vS`)."""
+    return word == name or (word.startswith("-") and name in word)
