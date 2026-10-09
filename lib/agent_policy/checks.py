@@ -568,6 +568,39 @@ QUERY_FILE = {
 # -f is --front-matter, not a filter file.
 QUERY_FILTER_GIVEN = {"jq": set(), "yq": {"--from-file", "--expression"}}
 YQ_SUBCOMMANDS = {"e", "eval", "ea", "eval-all"}
+# jq's options that take no value. Any other option is one this parser does
+# not know, which could take a value and shift which word is the filter, so
+# then the first positional is judged as a path too (failing closed).
+JQ_FLAGS = {
+    "--seq",
+    "--stream",
+    "--stream-errors",
+    "--slurp",
+    "--raw-input",
+    "--raw-output",
+    "--raw-output0",
+    "--join-output",
+    "--ascii-output",
+    "--null-input",
+    "--compact-output",
+    "--tab",
+    "--color-output",
+    "--monochrome-output",
+    "--sort-keys",
+    "--exit-status",
+    "--unbuffered",
+    "--binary",
+    "--version",
+    "--help",
+    "--build-configuration",
+}
+JQ_SHORT_FLAGS = set("nrjacsCMSeRbhV0")  # cspell:disable-line
+
+
+def _jq_known_flag(arg):
+    if arg.startswith("--"):
+        return arg in JQ_FLAGS
+    return set(arg[1:]) <= JQ_SHORT_FLAGS
 
 
 def _jq_from_file(arg, opt):
@@ -615,6 +648,8 @@ def _query_operands(name, args):
                 files.append(value)
         elif arg == "-" or not arg.startswith("-"):
             positional.append((arg, values))
+        elif name == "jq" and not _jq_known_flag(arg):
+            from_file = True
         i += 1
     if name == "yq" and positional[:1] and positional[0][0] in YQ_SUBCOMMANDS:
         positional = positional[1:]

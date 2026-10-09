@@ -1264,3 +1264,14 @@ expect = "deny"
 [[case]]
 command = "select v in a b; do echo $v; done"
 expect = "none"
+# An option jq's parser here does not know: the first positional is judged
+# as a path too, rather than dropped as the filter.
+[[case]]
+command = "jq --unknown ~/.netrc"
+expect = "deny"
+[[case]]
+command = "jq --unknown .a data.json"
+expect = "none"
+[[case]]
+command = "jq -rcS --tab --seq .a data.json"
+expect = "none"
