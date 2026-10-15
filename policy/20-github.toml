@@ -38,23 +38,39 @@ prefix = [
 
 [[rule]]
 severity = "high"
-reason = "Changes repository settings, secrets, releases or publishes content"
+reason = "Publishes a release, runs a workflow, closes an issue, labels, or writes through gh api"
+# Unattended (docs/POLICY.md, "Modes"): the development cycle, tags and
+# releases included. A gh api write through the airlock's broker is only a
+# review reply or resolving a thread.
+modes = { unattended = "low" }
+prefix = [
+  ["gh", "release", ["create", "edit", "upload"]],
+  ["gh", "workflow", "run"],
+  ["gh", "issue", "close"],
+  ["gh", "label", ["create", "edit"]],
+]
+claude = [
+  "Bash(*gh api*-X POST*)", "Bash(*gh api*-XPOST*)", "Bash(*gh api*--method POST*)", "Bash(*gh api*--method=POST*)",
+  "Bash(*gh api*-X PATCH*)", "Bash(*gh api*-XPATCH*)", "Bash(*gh api*--method PATCH*)", "Bash(*gh api*--method=PATCH*)",
+]
+
+[[rule]]
+severity = "high"
+reason = "Changes repository settings, secrets or workflows, or deletes published content"
 prefix = [
   ["gh", "repo", ["create", "delete", "archive", "rename", "edit", "fork", "sync"]],
-  ["gh", "release", ["create", "delete", "edit", "upload", "delete-asset"]],
+  ["gh", "release", ["delete", "delete-asset"]],
   ["gh", ["secret", "variable"], ["set", "delete"]],
   ["gh", "gist", ["create", "edit", "delete", "clone"]],
-  ["gh", "issue", ["close", "delete", "transfer", "lock", "pin"]],
-  ["gh", "workflow", ["run", "enable", "disable"]],
-  ["gh", "label", ["create", "edit", "delete", "clone"]],
+  ["gh", "issue", ["delete", "transfer", "lock", "pin"]],
+  ["gh", "workflow", ["enable", "disable"]],
+  ["gh", "label", ["delete", "clone"]],
   ["gh", "cache", "delete"],
   ["gh", "auth", ["login", "logout", "refresh", "setup-git", "token", "switch"]],
   ["gh", "extension", ["install", "upgrade", "remove"]],
 ]
 claude = [
-  "Bash(*gh api*-X POST*)", "Bash(*gh api*-XPOST*)", "Bash(*gh api*--method POST*)", "Bash(*gh api*--method=POST*)",
   "Bash(*gh api*-X PUT*)", "Bash(*gh api*-XPUT*)", "Bash(*gh api*--method PUT*)", "Bash(*gh api*--method=PUT*)",
-  "Bash(*gh api*-X PATCH*)", "Bash(*gh api*-XPATCH*)", "Bash(*gh api*--method PATCH*)", "Bash(*gh api*--method=PATCH*)",
   "Bash(*gh api*-X DELETE*)", "Bash(*gh api*-XDELETE*)", "Bash(*gh api*--method DELETE*)", "Bash(*gh api*--method=DELETE*)",
 ]
 

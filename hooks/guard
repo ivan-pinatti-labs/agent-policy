@@ -30,7 +30,7 @@ HERE = Path(__file__).resolve().parent
 LIB = HERE / "lib" if (HERE / "lib" / "agent_policy").is_dir() else HERE.parent / "lib"
 sys.path.insert(0, str(LIB))
 
-from agent_policy.checks import approve, evaluate
+from agent_policy.checks import MODES, approve, evaluate
 
 # A hook that crashes reports a non-blocking error, and the command runs
 # unchecked; so every failure to check is answered with a refusal instead.
@@ -82,6 +82,10 @@ def load_allowed(path):
 
 def main(argv):
     agent = option(argv, "--agent", "claude")
+    # The mode the policy was rendered for (docs/POLICY.md, "Modes"). An
+    # unknown one is hardened, the policy as written.
+    mode = option(argv, "--mode", "hardened")
+    mode = mode if mode in MODES else "hardened"
     # Codex is never approved: its allow runs a command outside its sandbox.
     allowed = load_allowed(option(argv, "--allow")) if agent == "claude" else []
     try:
@@ -103,7 +107,7 @@ def main(argv):
     if payload.get("permission_mode") == "plan":
         allowed = []
     try:
-        finding = evaluate(command, cwd)
+        finding = evaluate(command, cwd, mode=mode)
         approved = finding is None and approve(command, cwd, allowed)
     except Exception:
         respond("deny", UNCHECKED)

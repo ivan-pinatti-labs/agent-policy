@@ -49,28 +49,40 @@ prefix = [
 
 [[rule]]
 severity = "moderate"
-reason = "Removes, rewrites or exports podman containers, images, networks or volumes"
+reason = "Removes, stops or renames podman containers, images or networks"
+# Unattended (docs/POLICY.md, "Modes"): cleaning up the containers a run
+# made. In an airlock session the engine is the session's own L2 engine.
+# Volumes are left out: one removed loses its data.
+modes = { unattended = "low" }
 prefix = [
-  ["podman", ["rm", "rmi", "kill", "pause", "unpause", "rename", "untag",
-              "commit", "save", "load", "import", "export", "push", "login",
+  ["podman", ["rm", "rmi", "kill", "pause", "unpause", "rename", "untag"]],
+  ["podman", "container", ["rm", "kill", "pause", "unpause", "rename", "prune",
+                            "cleanup"]],
+  ["podman", "image", ["rm", "prune", "untag"]],
+  ["podman", "network", ["rm", "prune"]],
+  ["podman", "pod", ["rm", "kill", "stop", "prune", "pause", "unpause"]],
+  ["podman", "compose", ["down", "rm", "kill", "pause"]],
+  ["podman-compose", ["down", "rm", "kill", "pause"]],
+]
+
+[[rule]]
+severity = "moderate"
+reason = "Removes volumes, or rewrites, exports or publishes podman containers, images, networks or volumes"
+prefix = [
+  ["podman", ["commit", "save", "load", "import", "export", "push", "login",
               "logout", "mount", "update", "init", "play", "kube", "generate",
               "auto-update", "checkpoint", "restore", "machine", "farm",
               "quadlet", "unshare"]],
-  ["podman", "container", ["rm", "kill", "pause", "unpause", "rename",
-                            "commit", "export", "mount", "update", "prune",
-                            "cleanup", "clone", "checkpoint", "restore",
-                            "runlabel", "init"]],
-  ["podman", "image", ["rm", "prune", "load", "import", "save", "push",
-                        "mount", "scp", "sign", "trust", "untag"]],
-  ["podman", "network", ["rm", "prune", "connect", "disconnect", "reload", "update"]],
+  ["podman", "container", ["commit", "export", "mount", "update", "clone",
+                            "checkpoint", "restore", "runlabel", "init"]],
+  ["podman", "image", ["load", "import", "save", "push", "mount", "scp", "sign",
+                        "trust"]],
+  ["podman", "network", ["connect", "disconnect", "reload", "update"]],
   ["podman", "volume", ["rm", "prune", "import", "export", "mount", "reload"]],
   ["podman", "system", ["prune", "migrate", "renumber", "service", "connection"]],
-  ["podman", "pod", ["rm", "kill", "stop", "prune", "create", "start", "restart",
-                      "clone", "pause", "unpause"]],
+  ["podman", "pod", ["create", "start", "restart", "clone"]],
   ["podman", "secret", ["create", "rm"]],
   ["podman", "manifest", ["push", "rm", "create", "add", "annotate"]],
-  ["podman", "compose", ["down", "rm", "kill", "pause"]],
-  ["podman-compose", ["down", "rm", "kill", "pause"]],
 ]
 # Global flags pick another engine connection or storage root.
 claude = ["Bash(podman -*)"]

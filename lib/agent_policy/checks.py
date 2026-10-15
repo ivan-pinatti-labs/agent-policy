@@ -36,11 +36,41 @@ SEVERITY = {
 }
 HOOK_BYPASS_ENV = {"HUSKY": "0", "PRE_COMMIT_ALLOW_NO_CONFIG": None, "SKIP": None}
 
+# Modes (docs/POLICY.md, "Modes"). hardened is the policy as written.
+# assisted has the user present and asks less about reads. unattended has
+# nobody to answer a prompt, so whatever would ask is denied there, except
+# the findings named below, which it allows. A finding is named by its key;
+# the same table for the static rules is each rule's `modes` (tools/render.py).
+# Both modes assume the environment docs/POLICY.md describes around the agent
+# (a broker that limits GitHub writes, an installed sandbox, no credentials).
+MODES = ("hardened", "assisted", "unattended")
+MODE_SEVERITY = {
+    "assisted": {
+        # A read of a path the guard cannot resolve: the agent's environment
+        # holds no credentials of its own, and the sandbox denies the paths
+        # that hold them.
+        "unresolved-read": "low",
+    },
+    "unattended": {
+        "unresolved-read": "low",
+        # The sandbox confines writes to the session's own folders.
+        "unresolved-write": "low",
+        # The development cycle: tags and releases, deleting a merged branch,
+        # replying to and resolving review threads.
+        "push-tags": "low",
+        "branch-delete": "low",
+        "graphql-mutation": "low",
+        "gh-api-write": "low",
+    },
+}
+
 
 @dataclass
 class Finding:
     severity: str
     reason: str
+    # Names the finding for MODE_SEVERITY; empty for one no mode changes.
+    key: str = ""
 
     @property
     def decision(self):
@@ -51,7 +81,18 @@ class Finding:
         return SEVERITY[self.severity][1]
 
 
-def evaluate(command, cwd, env=None, inspector=containers.inspect):
+def for_mode(finding, mode):
+    """`finding` as `mode` sees it: moved to the severity MODE_SEVERITY gives
+    its key, or, unattended, denied where it would ask."""
+    severity = MODE_SEVERITY.get(mode, {}).get(finding.key)
+    if severity:
+        return Finding(severity, finding.reason, finding.key)
+    if mode == "unattended" and finding.decision == "ask":
+        return Finding("severe", f"{finding.reason} (unattended: nobody to ask)", finding.key)
+    return finding
+
+
+def evaluate(command, cwd, env=None, inspector=containers.inspect, mode="hardened"):
     env = os.environ if env is None else env
     home = env.get("HOME", os.path.expanduser("~"))
     ctx = {
@@ -64,10 +105,17 @@ def evaluate(command, cwd, env=None, inspector=containers.inspect):
     try:
         segs = list(segments(command, cwd=ctx["cwd"]))
     except ParseError:
-        return Finding("high", "the command line could not be parsed, so it was not checked")
+        return for_mode(
+            Finding("high", "the command line could not be parsed, so it was not checked"),
+            mode,
+        )
     worst = None
     for seg in segs:
         for finding in _check(seg, ctx):
+            finding = for_mode(finding, mode)
+            # A finding the mode allows is no opinion: the static rules decide.
+            if finding.decision == "allow":
+                continue
             if worst is None or finding.rank > worst.rank:
                 worst = finding
     return worst
@@ -340,7 +388,8 @@ def _redirects(seg, ctx):
         if target in ("/dev/null", "/dev/stdout", "/dev/stderr") or target.startswith("&"):
             continue
         if _unresolved(target):
-            yield Finding("high", f"redirects to {target}, a path this guard cannot resolve")
+            key = "unresolved-write" if op in OUTPUT_REDIRECTS else "unresolved-read"
+            yield Finding("high", f"redirects to {target}, a path this guard cannot resolve", key)
             continue
         path = containers.expand(target, ctx["cwd"], ctx["home"])
         if op in INPUT_REDIRECTS:
@@ -688,7 +737,11 @@ def _reader(seg, ctx):
     # path after it still earns its own (stricter) finding.
     for token in _operands(seg):
         if _unresolved(token):
-            yield Finding("high", f"{seg.name} reads {token}, a path this guard cannot resolve")
+            yield Finding(
+                "high",
+                f"{seg.name} reads {token}, a path this guard cannot resolve",
+                "unresolved-read",
+            )
             continue
         path = containers.expand(token, ctx["cwd"], ctx["home"])
         cred = containers.credential_target(path, ctx["home"], reading=True)
@@ -717,7 +770,11 @@ def _writer(seg, ctx):
         dests = list(_paths(args)) if any(a in ("-i", "--in-place") for a in args) else []
     for token in dests:
         if _unresolved(token):
-            yield Finding("high", f"{name} writes {token}, a path this guard cannot resolve")
+            yield Finding(
+                "high",
+                f"{name} writes {token}, a path this guard cannot resolve",
+                "unresolved-write",
+            )
             continue
         path = containers.expand(token, ctx["cwd"], ctx["home"])
         finding = _write_finding(path, ctx)
@@ -851,7 +908,16 @@ def _git(seg, ctx):
         or (_short_cluster(a) and ("D" in a or ("d" in a and "f" in a)))
         for a in args
     ):
-        yield Finding("high", "force-deletes or overwrites a branch")
+        # Only deleting is named for a mode (unattended deletes the branch of
+        # a merged pull request); moving or copying over a branch is not.
+        moves = any(
+            a in ("-M", "-C") or (_short_cluster(a) and ("M" in a or "C" in a)) for a in args
+        )
+        deletes = any(
+            a == "-D" or (_short_cluster(a) and ("D" in a or ("d" in a and "f" in a))) for a in args
+        ) or ("--force" in args and any(a in ("-d", "--delete") for a in args))
+        key = "branch-delete" if deletes and not moves else ""
+        yield Finding("high", "force-deletes or overwrites a branch", key)
     elif sub == "tag" and any(a in ("-d", "--delete", "-f", "--force") for a in args):
         yield Finding("high", "deletes or moves a tag")
     elif sub == "stash" and args[:1] and args[0] in ("drop", "clear"):
@@ -901,7 +967,9 @@ def _git_push(args):
         elif _short_cluster(arg) and ("f" in arg or "d" in arg):
             yield Finding("severe", f"git push {arg} forces or deletes on the remote")
         elif arg in ("--tags",):
-            yield Finding("moderate", "git push --tags pushes tags, which can start a release")
+            yield Finding(
+                "moderate", "git push --tags pushes tags, which can start a release", "push-tags"
+            )
         elif not arg.startswith("-"):
             positional.append(arg)
         i += 1
@@ -998,14 +1066,19 @@ def _gh_api(args):
                 body_from_file = True
     if "graphql" in args:
         if mutation:
-            yield Finding("moderate", "a GraphQL mutation changes data on GitHub")
+            yield Finding(
+                "moderate", "a GraphQL mutation changes data on GitHub", "graphql-mutation"
+            )
         elif body_from_file:
             yield Finding("moderate", "a GraphQL query read from a file may be a mutation")
         return
     if method is None:
         method = "POST" if has_body else "GET"
     if method.upper() not in ("GET", "HEAD"):
-        yield Finding("moderate", f"gh api {method.upper()} changes data on GitHub")
+        # POST and PATCH are what the review flow sends (replies); PUT and
+        # DELETE replace or remove, and no mode lets them through unasked.
+        key = "gh-api-write" if method.upper() in ("POST", "PATCH") else ""
+        yield Finding("moderate", f"gh api {method.upper()} changes data on GitHub", key)
 
 
 # HTTP clients
@@ -1235,7 +1308,16 @@ def _engine(seg, ctx):
     elif sub == "cp":
         yield from _engine_cp(engine, rest, ctx)
     elif sub in ENGINE_TARGETED:
+        if sub == "rm" and _removes_volumes(rest):
+            yield Finding("high", f"{engine} rm --volumes removes the container's volumes too")
         yield from _targeted(engine, sub, rest, ctx)
+
+
+def _removes_volumes(args):
+    """`rm -v`/`--volumes` or `compose down -v`: the volumes go with the
+    containers, and a removed volume takes its data with it. Its own finding,
+    with no key, so a mode that allows removing containers still refuses it."""
+    return any(a == "--volumes" or (_short_cluster(a) and "v" in a) for a in args)
 
 
 def _engine_cp(engine, rest, ctx):
@@ -1287,6 +1369,8 @@ def _compose(seg, ctx, rest=None):
     sub = next((a for a in rest if not a.startswith("-") and a not in files), None)
     if sub in COMPOSE_READ_ONLY or sub is None:
         return
+    if sub == "down" and _removes_volumes(rest):
+        yield Finding("high", "compose down --volumes removes the project's volumes too")
     places = [ctx["cwd"]] + [containers.expand(f, ctx["cwd"], ctx["home"]) for f in files]
     for root in ctx["protected"]:
         if any(containers.under(p, root) for p in places):

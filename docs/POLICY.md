@@ -33,6 +33,71 @@ an AWS write verb mid-line. A guard finding of `severe` or `critical`
 overrides an `allow` from the static rules, which is how `cat` stays allowed
 in general but `cat ~/.ssh/id_ed25519` is refused.
 
+## Modes
+
+The policy as written is `hardened`, the default everywhere. Two more modes
+exist for an environment that knows who is watching, such as a
+devcontainer-airlock session, which picks one per session. Each is a
+rendering of the same rules (`tools/render.py --mode`), and the guard is told
+which one it runs under (`guard --mode`).
+
+| Mode         | Who is there            | What changes                                                        |
+| ------------ | ----------------------- | ------------------------------------------------------------------- |
+| `hardened`   | the user, at every step | nothing: the policy as written                                      |
+| `assisted`   | the user, present       | a read of a path the guard cannot resolve is allowed                |
+| `unattended` | nobody                  | nothing asks: what would ask is denied, unless named for this mode  |
+
+Assisted allows `cat $f` and `wc -l < $f`; every static rule and every other
+finding is as hardened. Unattended has nobody to answer a prompt, so a rule
+or finding that would ask is denied there, unless the policy names it for
+this mode, and then it is allowed. Every deny stays a deny, whatever the
+mode. What unattended allows is the development cycle, and only that:
+
+- `gh release create/edit/upload`, `gh workflow run`, `gh issue close`,
+  `gh label create/edit`, `git push --tags`;
+- `gh api` POST and PATCH, and GraphQL mutations, to any endpoint as far as
+  this policy is concerned;
+- force-deleting a branch (`git branch -D`), merged or not; moving or
+  copying over a branch (`-M`, `-C`, `--force`) stays denied;
+- removing, stopping or renaming podman containers, images and networks;
+  removing a volume stays denied, since its data goes with it;
+- reads and writes of a path the guard cannot resolve, credential and
+  startup paths included when they hide behind a variable.
+
+These assume an environment around the agent that holds the line the policy
+cannot. Unattended is meant for one, such as a devcontainer-airlock
+session: there the gh broker passes only review replies and resolving a
+thread among `gh api` writes, the command sandbox (installed, not trial)
+confines writes to the session's own folders and denies reading credential
+paths, the workbench holds no credentials of its own, and podman reaches
+only the session's own L2 engine. Without such an environment, run
+hardened.
+
+Everything else that asks under hardened is denied unattended, among it:
+discarding work (`git reset --hard`, `restore`, `clean`, a checkout over
+changes), `git worktree remove --force`, deleting or moving a tag, pushing
+straight to `main`, `find -exec` and `-delete`, a request body sent with
+`curl` or `wget`, privileged containers, a GraphQL query read from a file,
+`gh api` PUT and DELETE, repository settings, secrets and gists, and a
+command line the guard cannot parse. A rule added later starts out denied
+there too, so nothing new can stall an unattended run on a prompt.
+
+A static rule names its own exception with `modes`:
+
+```toml
+[[rule]]
+severity = "high"
+reason = "Publishes a release, runs a workflow, ..."
+modes = { unattended = "low" }
+prefix = [["gh", "release", ["create", "edit", "upload"]]]
+```
+
+A guard finding does the same through its key, in `MODE_SEVERITY` in
+`lib/agent_policy/checks.py`. Under a mode that allows a rule, its `claude`
+patterns that start with a wildcard (`Bash(*gh api*-X POST*)`) are left
+out: such a pattern matches any command holding it anywhere, so it can only
+ever ask or deny.
+
 ### Files
 
 One file per tool, numbered so related tools sit together:

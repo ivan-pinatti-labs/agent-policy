@@ -46,6 +46,7 @@ class GuardCases(unittest.TestCase):
                     case.get("cwd", "/work/project"),
                     env=ENV,
                     inspector=fake_inspect,
+                    mode=case.get("mode", "hardened"),
                 )
                 got = finding.decision if finding else "none"
                 self.assertEqual(case["expect"], got, finding.reason if finding else "no finding")
@@ -153,7 +154,7 @@ class HookProtocol(unittest.TestCase):
 
         shutil.rmtree(cls.tmp)
 
-    def run_hook(self, agent, command, mode="default"):
+    def run_hook(self, agent, command, mode="default", extra=()):
         payload = {
             "tool_name": "Bash",
             "tool_input": {"command": command},
@@ -164,7 +165,7 @@ class HookProtocol(unittest.TestCase):
         env = dict(os.environ, **ENV)
         guard = [sys.executable, str(ROOT / "hooks" / "guard")]
         proc = subprocess.run(
-            [*guard, "--agent", agent, "--allow", str(self.allow)],
+            [*guard, "--agent", agent, "--allow", str(self.allow), *extra],
             input=json.dumps(payload),
             capture_output=True,
             text=True,
@@ -196,6 +197,16 @@ class HookProtocol(unittest.TestCase):
         out = self.run_hook("codex", "git branch -D x")
         self.assertEqual("deny", out["permissionDecision"])
         self.assertIn("approval", out["permissionDecisionReason"])
+
+    def test_the_mode_comes_from_the_command_line(self):
+        unattended = ("--mode", "unattended")
+        self.assertIsNone(self.run_hook("claude", "git branch -D x", extra=unattended))
+        out = self.run_hook("claude", "git reset --hard", extra=unattended)
+        self.assertEqual("deny", out["permissionDecision"])
+        self.assertIn("unattended: nobody to ask", out["permissionDecisionReason"])
+        # An unknown mode is hardened, the policy as written.
+        out = self.run_hook("claude", "git branch -D x", extra=("--mode", "lenient"))
+        self.assertEqual("ask", out["permissionDecision"])
 
     def test_any_failure_to_check_refuses(self):
         for payload in ("[1, 2]", '"text"', '{"tool_input": {"command": "cat \\u0000x"}}'):

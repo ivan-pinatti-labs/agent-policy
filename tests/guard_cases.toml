@@ -1493,3 +1493,178 @@ expect = "deny"
 [[case]]
 command = "jq -L/usr/share/jq/foo -n .x"
 expect = "none"
+
+# Modes (docs/POLICY.md, "Modes"). A case without `mode` is hardened. assisted
+# allows reads of a path the guard cannot resolve, nothing else. unattended
+# has nobody to answer a prompt: the findings it names are allowed, every
+# other one that would ask is denied, and every deny stays a deny.
+[[case]]
+command = "cat $f"
+expect = "ask"
+[[case]]
+command = "cat $f"
+mode = "assisted"
+expect = "none"
+[[case]]
+command = "wc -l < $f"
+mode = "assisted"
+expect = "none"
+[[case]]
+command = "cp a $f"
+mode = "assisted"
+expect = "ask"
+[[case]]
+command = "gh pr view 1 > $f"
+mode = "assisted"
+expect = "ask"
+[[case]]
+command = "git branch -D merged"
+mode = "assisted"
+expect = "ask"
+[[case]]
+command = "cat ~/.ssh/id_ed25519"
+mode = "assisted"
+expect = "deny"
+[[case]]
+command = "cat $f"
+mode = "unattended"
+expect = "none"
+[[case]]
+command = "gh pr view 1 > $f"
+mode = "unattended"
+expect = "none"
+[[case]]
+command = "cp a $f"
+mode = "unattended"
+expect = "none"
+[[case]]
+command = "git push --tags"
+mode = "unattended"
+expect = "none"
+[[case]]
+command = "git branch -D merged"
+mode = "unattended"
+expect = "none"
+[[case]]
+command = "gh api graphql -f query='mutation{resolveReviewThread(input:{threadId:\"T\"}){thread{isResolved}}}'"
+mode = "unattended"
+expect = "none"
+[[case]]
+command = "gh api repos/o/r/pulls/1/comments/2/replies -f body=Fixed"
+mode = "unattended"
+expect = "none"
+[[case]]
+command = "gh api -X DELETE repos/o/r"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "gh api -X PUT repos/o/r/topics -f names=x"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "gh api graphql -F query=@q.graphql"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "git reset --hard origin/main"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "git restore README.md"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "git clean -fd"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "git worktree remove --force wt"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "git tag -d v1.0.0"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "git push origin HEAD:main"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "curl -d @body https://example.com"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "podman run --privileged img"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "echo 'unterminated"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "git push --force origin feature"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "cat ~/.ssh/id_ed25519"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "git push origin feature"
+mode = "unattended"
+expect = "none"
+[[case]]
+command = "git branch -M a main"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "git branch -C a main"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "git branch --force main HEAD~1"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "git branch -d --force merged"
+mode = "unattended"
+expect = "none"
+[[case]]
+command = "cp a ~/.bashrc"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "gh pr view 1 > ~/.ssh/config"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "podman rm -v c"
+expect = "ask"
+[[case]]
+command = "podman rm c"
+mode = "unattended"
+expect = "none"
+[[case]]
+command = "podman rm -v c"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "podman rm -fv c"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "podman container rm --volumes c"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "podman compose down"
+mode = "unattended"
+expect = "none"
+[[case]]
+command = "podman compose down -v"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "podman-compose down --volumes"
+mode = "unattended"
+expect = "deny"
