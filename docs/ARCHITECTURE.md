@@ -114,6 +114,12 @@ its own sandbox unless an allow rule lifts it out.
 - **Paths:** the rendered file carries no machine paths. Home relative
   rules use `~`, and the guard's path is the install prefix
   (`/usr/local/libexec/agent-policy` by default).
+- **Modes:** `make install` renders `hardened`, the policy as written.
+  `tools/render.py --mode assisted|unattended` renders another mode
+  ([POLICY.md](POLICY.md#modes)): the static rules with each severity as
+  that mode sees it, and a hook line that passes `--mode` to the guard. An
+  environment that picks the mode per session, such as devcontainer-airlock,
+  renders each one and installs the drop-in it needs.
 
 ## How Codex receives it
 

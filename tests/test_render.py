@@ -225,3 +225,107 @@ class Render(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RenderModes(unittest.TestCase):
+    """docs/POLICY.md, "Modes": one rendering per mode."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        cls.out = {}
+        for mode in ("default", "hardened", "assisted", "unattended"):
+            out = Path(cls.tmp) / mode
+            args = ["--out", str(out)] + ([] if mode == "default" else ["--mode", mode])
+            assert render.main(args) == 0
+            cls.out[mode] = out
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp)
+
+    def drop_in(self, mode):
+        return json.loads((self.out[mode] / "claude" / "50-agent-policy.json").read_text())
+
+    def test_hardened_is_the_policy_as_written(self):
+        for name in (
+            "claude/50-agent-policy.json",
+            "claude/guard-allow.json",
+            "codex/agent-policy.rules",
+        ):
+            self.assertEqual(
+                (self.out["default"] / name).read_text(),
+                (self.out["hardened"] / name).read_text(),
+                name,
+            )
+
+    def test_each_mode_tells_the_guard(self):
+        for mode in ("assisted", "unattended"):
+            command = self.drop_in(mode)["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+            self.assertIn(f"--agent claude --mode {mode} --allow", command)
+        command = self.drop_in("hardened")["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        self.assertNotIn("--mode", command)
+
+    def test_assisted_changes_no_static_rule(self):
+        self.assertEqual(
+            self.drop_in("hardened")["permissions"], self.drop_in("assisted")["permissions"]
+        )
+
+    def test_unattended_asks_nothing(self):
+        perms = self.drop_in("unattended")["permissions"]
+        self.assertEqual([], perms["ask"])
+        for allowed in (
+            "Bash(gh release create *)",
+            "Bash(gh workflow run *)",
+            "Bash(gh issue close *)",
+            "Bash(gh label edit *)",
+            "Bash(podman rm *)",
+        ):
+            self.assertIn(allowed, perms["allow"])
+        for denied in (
+            "Bash(git reset *)",
+            "Bash(gh release delete *)",
+            "Bash(gh workflow disable *)",
+            "Bash(gh label delete *)",
+            "Bash(podman push *)",
+            "Bash(*gh api*-X DELETE*)",
+            "Bash(find * -exec *)",
+            "Bash(git push --force *)",
+        ):
+            self.assertIn(denied, perms["deny"])
+
+    def test_a_leading_wildcard_never_allows(self):
+        perms = self.drop_in("unattended")["permissions"]
+        self.assertFalse([p for p in perms["allow"] if p.startswith("Bash(*")])
+        for decision in render.DECISIONS:
+            self.assertNotIn("Bash(*gh api*-X POST*)", perms[decision])
+
+    def test_unattended_hands_the_guard_its_allowed_prefixes(self):
+        allow = json.loads((self.out["unattended"] / "claude" / "guard-allow.json").read_text())
+        self.assertIn(["gh", "release", "create"], allow["prefixes"])
+        self.assertNotIn(["gh", "release", "delete"], allow["prefixes"])
+
+    def test_severity_in(self):
+        rule = {"severity": "high"}
+        self.assertEqual("high", render.severity_in(rule, "hardened"))
+        self.assertEqual("high", render.severity_in(rule, "assisted"))
+        self.assertEqual("severe", render.severity_in(rule, "unattended"))
+        self.assertEqual(
+            "low", render.severity_in(dict(rule, modes={"unattended": "low"}), "unattended")
+        )
+        self.assertEqual("read", render.severity_in({"severity": "read"}, "unattended"))
+
+    def test_bad_modes_are_refused(self):
+        for modes in (
+            '{ lenient = "low" }',
+            '{ hardened = "low" }',
+            '{ unattended = "maybe" }',
+            '"low"',
+        ):
+            with self.subTest(modes=modes), tempfile.TemporaryDirectory() as bad:
+                Path(bad, "x.toml").write_text(
+                    '[[rule]]\nseverity = "high"\nreason = "r"\nprefix = [["ls"]]\n'
+                    f"modes = {modes}\n"
+                )
+                with self.assertRaises(render.PolicyError):
+                    render.load(bad)

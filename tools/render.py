@@ -25,6 +25,7 @@ from pathlib import Path
 # The sandbox's denied paths come from the guard's own lists.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from agent_policy import containers
+from agent_policy.checks import MODES
 
 DECISIONS = ("allow", "ask", "deny")
 AGENTS = ("claude", "codex")
@@ -67,6 +68,22 @@ def decision_of(rule):
     return SEVERITY[rule["severity"]]
 
 
+def severity_in(rule, mode):
+    """A rule's severity in `mode` (docs/POLICY.md, "Modes"): the one its
+    `modes` names, else, unattended, deny for a rule that would ask, since
+    nobody is there to answer; else the rule's own."""
+    if mode in rule.get("modes", {}):
+        return rule["modes"][mode]
+    if mode == "unattended" and SEVERITY[rule["severity"]] == "ask":
+        return "severe"
+    return rule["severity"]
+
+
+def for_mode(rules, mode):
+    """The rules with each severity as `mode` sees it."""
+    return [dict(rule, severity=severity_in(rule, mode)) for rule in rules]
+
+
 class PolicyError(ValueError):
     pass
 
@@ -90,11 +107,16 @@ def load(policy_dir, skip=()):
 
 
 def validate(rule, where):
-    unknown = set(rule) - {"severity", "reason", "agents", "prefix", "claude"}
+    unknown = set(rule) - {"severity", "reason", "agents", "prefix", "claude", "modes"}
     if unknown:
         raise PolicyError(f"{where}: unknown keys {sorted(unknown)}")
     if rule.get("severity") not in SEVERITY:
         raise PolicyError(f"{where}: severity must be one of {tuple(SEVERITY)}")
+    modes = rule.get("modes", {})
+    if not isinstance(modes, dict) or set(modes) - set(MODES[1:]):
+        raise PolicyError(f"{where}: modes may only name {MODES[1:]}")
+    if any(severity not in SEVERITY for severity in modes.values()):
+        raise PolicyError(f"{where}: each mode's severity must be one of {tuple(SEVERITY)}")
     if not isinstance(rule.get("reason"), str) or not rule["reason"]:
         raise PolicyError(f"{where}: reason is required")
     agents = rule.get("agents", list(AGENTS))
@@ -144,7 +166,13 @@ def claude_rules(rules):
         for prefix in rule["prefix"]:
             for words in expand(prefix):
                 bucket.extend(claude_bash(words, decision))
-        bucket.extend(rule["claude"])
+        # A pattern that starts with a wildcard (`Bash(*gh api*-X POST*)`)
+        # matches any command that holds it anywhere, so it can only ever ask
+        # or deny. Where a mode allows its rule it is left out, and the
+        # command falls to the other rules and the guard.
+        bucket.extend(
+            p for p in rule["claude"] if not (decision == "allow" and p.startswith("Bash(*"))
+        )
     return {d: list(dict.fromkeys(v)) for d, v in perms.items()}
 
 
@@ -158,8 +186,10 @@ def guard_allow(rules):
     return {"prefixes": out}
 
 
-def render_claude(rules, libexec, scratch=True):
+def render_claude(rules, libexec, scratch=True, mode="hardened"):
     extra = {"additionalDirectories": [SCRATCH_DIR]} if scratch else {}
+    # hardened is the guard's default, so its hook line is the one it always was.
+    mode_arg = "" if mode == "hardened" else f" --mode {mode}"
     return {
         "permissions": {**claude_rules(rules), **extra},
         "hooks": {
@@ -170,7 +200,8 @@ def render_claude(rules, libexec, scratch=True):
                         {
                             "type": "command",
                             "command": (
-                                f"{libexec}/guard --agent claude --allow {libexec}/guard-allow.json"
+                                f"{libexec}/guard --agent claude{mode_arg}"
+                                f" --allow {libexec}/guard-allow.json"
                             ),
                             "timeout": 10,
                         }
@@ -276,18 +307,24 @@ def main(argv=None):
         action="store_true",
         help=f"leave out the scratchpad: {SCRATCH_FILE}, its folder and its sandbox access",
     )
+    parser.add_argument(
+        "--mode",
+        choices=MODES,
+        default="hardened",
+        help='the mode to render (docs/POLICY.md, "Modes"); hardened is the policy as written',
+    )
     args = parser.parse_args(argv)
     scratch = not args.no_scratch
     try:
         policy = confine(args.policy, [REPO_ROOT], "--policy")
         out = confine(args.out, [REPO_ROOT, tempfile.gettempdir()], "--out")
-        rules = load(policy, skip=() if scratch else (SCRATCH_FILE,))
+        rules = for_mode(load(policy, skip=() if scratch else (SCRATCH_FILE,)), args.mode)
     except PolicyError as err:
         print(f"render: {err}", file=sys.stderr)
         return 1
     (out / "claude").mkdir(parents=True, exist_ok=True)
     (out / "codex").mkdir(parents=True, exist_ok=True)
-    claude = render_claude(rules, args.libexec, scratch)
+    claude = render_claude(rules, args.libexec, scratch, args.mode)
     try:
         sandbox_cfg = load_sandbox(policy)
     except PolicyError as err:
@@ -307,7 +344,8 @@ def main(argv=None):
     sev = {s: sum(1 for r in rules if r["severity"] == s) for s in SEVERITY}
     sev_line = ", ".join(f"{s} {n}" for s, n in sev.items() if n)
     print(
-        f"render: {len(rules)} rules ({sev_line}) -> claude ({counts}), codex "
+        f"render: {'' if args.mode == 'hardened' else args.mode + ': '}"
+        f"{len(rules)} rules ({sev_line}) -> claude ({counts}), codex "
         f"{sum(1 for r in rules if 'codex' in r['agents'] for _ in r['prefix'])} prefix rules"
     )
     return 0
