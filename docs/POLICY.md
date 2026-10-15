@@ -55,13 +55,23 @@ mode. What unattended allows is the development cycle, and only that:
 
 - `gh release create/edit/upload`, `gh workflow run`, `gh issue close`,
   `gh label create/edit`, `git push --tags`;
-- `gh api` POST and PATCH, and GraphQL mutations (behind the airlock's gh
-  broker, only review replies and resolving a thread get through);
-- force-deleting a branch (`git branch -D`, for a merged one);
-- removing, stopping or renaming podman containers, images, networks and
-  volumes (in an airlock session, the session's own L2 engine's);
-- reads and writes of a path the guard cannot resolve (the sandbox confines
-  writes to the session's own folders).
+- `gh api` POST and PATCH, and GraphQL mutations, to any endpoint as far as
+  this policy is concerned;
+- force-deleting a branch (`git branch -D`), merged or not; moving or
+  copying over a branch (`-M`, `-C`, `--force`) stays denied;
+- removing, stopping or renaming podman containers, images and networks;
+  removing a volume stays denied, since its data goes with it;
+- reads and writes of a path the guard cannot resolve, credential and
+  startup paths included when they hide behind a variable.
+
+These assume an environment around the agent that holds the line the policy
+cannot. Unattended is meant for one, such as a devcontainer-airlock
+session: there the gh broker passes only review replies and resolving a
+thread among `gh api` writes, the command sandbox (installed, not trial)
+confines writes to the session's own folders and denies reading credential
+paths, the workbench holds no credentials of its own, and podman reaches
+only the session's own L2 engine. Without such an environment, run
+hardened.
 
 Everything else that asks under hardened is denied unattended, among it:
 discarding work (`git reset --hard`, `restore`, `clean`, a checkout over

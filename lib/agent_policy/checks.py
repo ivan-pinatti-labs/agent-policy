@@ -41,6 +41,8 @@ HOOK_BYPASS_ENV = {"HUSKY": "0", "PRE_COMMIT_ALLOW_NO_CONFIG": None, "SKIP": Non
 # nobody to answer a prompt, so whatever would ask is denied there, except
 # the findings named below, which it allows. A finding is named by its key;
 # the same table for the static rules is each rule's `modes` (tools/render.py).
+# Both modes assume the environment docs/POLICY.md describes around the agent
+# (a broker that limits GitHub writes, an installed sandbox, no credentials).
 MODES = ("hardened", "assisted", "unattended")
 MODE_SEVERITY = {
     "assisted": {
@@ -56,7 +58,7 @@ MODE_SEVERITY = {
         # The development cycle: tags and releases, deleting a merged branch,
         # replying to and resolving review threads.
         "push-tags": "low",
-        "branch-force": "low",
+        "branch-delete": "low",
         "graphql-mutation": "low",
         "gh-api-write": "low",
     },
@@ -906,7 +908,16 @@ def _git(seg, ctx):
         or (_short_cluster(a) and ("D" in a or ("d" in a and "f" in a)))
         for a in args
     ):
-        yield Finding("high", "force-deletes or overwrites a branch", "branch-force")
+        # Only deleting is named for a mode (unattended deletes the branch of
+        # a merged pull request); moving or copying over a branch is not.
+        moves = any(
+            a in ("-M", "-C") or (_short_cluster(a) and ("M" in a or "C" in a)) for a in args
+        )
+        deletes = any(
+            a == "-D" or (_short_cluster(a) and ("D" in a or ("d" in a and "f" in a))) for a in args
+        ) or ("--force" in args and any(a in ("-d", "--delete") for a in args))
+        key = "branch-delete" if deletes and not moves else ""
+        yield Finding("high", "force-deletes or overwrites a branch", key)
     elif sub == "tag" and any(a in ("-d", "--delete", "-f", "--force") for a in args):
         yield Finding("high", "deletes or moves a tag")
     elif sub == "stash" and args[:1] and args[0] in ("drop", "clear"):

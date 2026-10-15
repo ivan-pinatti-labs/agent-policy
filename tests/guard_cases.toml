@@ -1613,3 +1613,27 @@ expect = "deny"
 command = "git push origin feature"
 mode = "unattended"
 expect = "none"
+[[case]]
+command = "git branch -M a main"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "git branch -C a main"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "git branch --force main HEAD~1"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "git branch -d --force merged"
+mode = "unattended"
+expect = "none"
+[[case]]
+command = "cp a ~/.bashrc"
+mode = "unattended"
+expect = "deny"
+[[case]]
+command = "gh pr view 1 > ~/.ssh/config"
+mode = "unattended"
+expect = "deny"

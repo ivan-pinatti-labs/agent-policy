@@ -329,3 +329,14 @@ class RenderModes(unittest.TestCase):
                 )
                 with self.assertRaises(render.PolicyError):
                     render.load(bad)
+
+    def test_volumes_are_never_removed_unattended(self):
+        perms = self.drop_in("unattended")["permissions"]
+        self.assertIn("Bash(podman volume rm *)", perms["deny"])
+        self.assertIn("Bash(podman image prune *)", perms["allow"])
+
+    def test_the_codex_hook_gets_the_mode_too(self):
+        requirements = (self.out["unattended"] / "codex" / "requirements.toml").read_text()
+        self.assertIn("/guard --agent codex --mode unattended", requirements)
+        hardened = (self.out["hardened"] / "codex" / "requirements.toml").read_text()
+        self.assertIn('/guard --agent codex"', hardened)

@@ -270,11 +270,13 @@ def render_codex_rules(rules):
     return "\n".join(lines)
 
 
-def render_codex_requirements(libexec):
+def render_codex_requirements(libexec, mode="hardened"):
     """The guard as a Codex managed hook. Codex loads a hook from
     requirements.toml only when [hooks] managed_dir names the folder its
     script lives in, and [features] hooks = true stops a user's own
-    configuration from switching hooks off."""
+    configuration from switching hooks off. The guard is told the mode its
+    rules were rendered for, as Claude Code's hook is."""
+    mode_arg = "" if mode == "hardened" else f" --mode {mode}"
     return "\n".join(
         [
             MARKER,
@@ -290,7 +292,7 @@ def render_codex_requirements(libexec):
             "",
             "[[hooks.PreToolUse.hooks]]",
             'type = "command"',
-            f'command = "{libexec}/guard --agent codex"',
+            f'command = "{libexec}/guard --agent codex{mode_arg}"',
             "timeout = 10",
             "",
         ]
@@ -339,7 +341,9 @@ def main(argv=None):
     (out / "claude" / "50-agent-policy.json").write_text(json.dumps(claude, indent=2) + "\n")
     (out / "claude" / "guard-allow.json").write_text(json.dumps(guard_allow(rules)) + "\n")
     (out / "codex" / "agent-policy.rules").write_text(render_codex_rules(rules))
-    (out / "codex" / "requirements.toml").write_text(render_codex_requirements(args.libexec))
+    (out / "codex" / "requirements.toml").write_text(
+        render_codex_requirements(args.libexec, args.mode)
+    )
     counts = ", ".join(f"{d} {len(claude['permissions'][d])}" for d in DECISIONS)
     sev = {s: sum(1 for r in rules if r["severity"] == s) for s in SEVERITY}
     sev_line = ", ".join(f"{s} {n}" for s, n in sev.items() if n)
