@@ -1308,7 +1308,16 @@ def _engine(seg, ctx):
     elif sub == "cp":
         yield from _engine_cp(engine, rest, ctx)
     elif sub in ENGINE_TARGETED:
+        if sub == "rm" and _removes_volumes(rest):
+            yield Finding("high", f"{engine} rm --volumes removes the container's volumes too")
         yield from _targeted(engine, sub, rest, ctx)
+
+
+def _removes_volumes(args):
+    """`rm -v`/`--volumes` or `compose down -v`: the volumes go with the
+    containers, and a removed volume takes its data with it. Its own finding,
+    with no key, so a mode that allows removing containers still refuses it."""
+    return any(a == "--volumes" or (_short_cluster(a) and "v" in a) for a in args)
 
 
 def _engine_cp(engine, rest, ctx):
@@ -1360,6 +1369,8 @@ def _compose(seg, ctx, rest=None):
     sub = next((a for a in rest if not a.startswith("-") and a not in files), None)
     if sub in COMPOSE_READ_ONLY or sub is None:
         return
+    if sub == "down" and _removes_volumes(rest):
+        yield Finding("high", "compose down --volumes removes the project's volumes too")
     places = [ctx["cwd"]] + [containers.expand(f, ctx["cwd"], ctx["home"]) for f in files]
     for root in ctx["protected"]:
         if any(containers.under(p, root) for p in places):
