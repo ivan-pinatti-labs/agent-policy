@@ -176,8 +176,9 @@ result line, which counts as `Review completed` only on a run that concluded
 `success`. No report yet is `pending`, not `failure`.
 
 The shared review verdict, published as `Review Verified` by
-`coderabbit-gate.yml`, is the fix: it reads the actual description behind
-the `CodeRabbit` status rather than its color, and grades in three lanes (a
+`coderabbit-gate.yml`, is the fix: it reads the actual words behind
+CodeRabbit's newer report, its status description or its check run's result,
+rather than its color, and grades in three lanes (a
 draft is `pending`; a clean pin-only bot pull request is `success` with no
 review at all; everything else is `success` only for the literal
 description `Review completed`, `pending` while a review is queued or
