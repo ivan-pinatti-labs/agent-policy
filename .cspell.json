@@ -9,6 +9,8 @@
     "argjson",
     "artifacthub",
     "askpass",
+    "asklog",
+    "nonblock",
     "automerged",
     "backdoored",
     "behaviour",

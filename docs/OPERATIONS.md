@@ -112,6 +112,72 @@ The guard then refuses, as a hand-off:
 `AGENT_POLICY_PROTECTED` (colon separated) works too. The file is per
 machine and never committed.
 
+## The ask log
+
+To see how often the policy stops an agent, and on what, turn on the ask
+log. It is off by default; either of these turns it on:
+
+```shell
+mkdir -p ~/.config/agent-policy && touch ~/.config/agent-policy/ask-log
+export AGENT_POLICY_ASK_LOG=1   # in the environment the agent starts from
+```
+
+The file works for every session on the machine, whatever environment the
+agent was started from; delete it to turn the log off again. The guard then
+appends one JSON line per prompt or refusal it can see to
+`~/.local/state/agent-policy/asks.jsonl` (`$XDG_STATE_HOME` moves it), next
+to the backups. The file is created readable by you alone.
+
+```json
+{"ts":"2026-11-02T14:03:11Z","agent":"claude","mode":"hardened","source":"rules","decision":"unmatched","reason":"no-allow-match","names":["kubectl","jq"],"env":["AWS_PROFILE"],"unmatched":["kubectl"]}
+```
+
+| Field       | What                                                                                                       |
+| ----------- | ---------------------------------------------------------------------------------------------------------- |
+| `ts`        | when, in UTC                                                                                               |
+| `agent`     | `claude` or `codex`                                                                                        |
+| `mode`      | the mode the guard runs under ([POLICY.md](POLICY.md#modes))                                               |
+| `source`    | `guard` (a finding of the guard's own) or `rules` (the guard was silent, the static rules decide)          |
+| `decision`  | `ask` or `deny`; for `rules`, also `unmatched`                                                             |
+| `reason`    | a fixed id: the finding's key or the check that found it, a rule as `<file> rule <n>`, or `no-allow-match` |
+| `severity`  | the finding's severity (`guard` only)                                                                      |
+| `names`     | the command names on the line, each once                                                                   |
+| `env`       | the names of variables set in front of a command                                                           |
+| `unmatched` | the commands no allow rule matched (`unmatched` only)                                                      |
+
+Only names are written: never an argument, a value, a path, or the command
+line itself, so a secret on the line cannot reach the file. A name that is
+not a plain word (a computed `$X`, an odd path) is written as `?`.
+
+What the guard can tell:
+
+- **`guard`** lines are certain: the guard itself asked or refused.
+- **`rules`** lines are an estimate, for Claude Code only. The guard is
+  silent there, so it reads the rendered rules (`guard-allow.json` carries
+  the ask and deny rules too) and records the strictest one that matches
+  the line (`ask` or `deny`, with the rule). Failing that, if a command on
+  the line matches no allow rule, it records `unmatched`: Claude Code falls
+  to its prompt, or in auto mode to its classifier. A command counts as
+  allowed exactly as the guard's own approval counts it, so a variable in
+  front (`AWS_PROFILE=... kubectl get pods`) or a wrapper makes it
+  unmatched. The guard cannot see the project's own allow rules or an
+  answer saved with "don't ask again", so some of these never prompted.
+  `unmatched` is the most useful category: each one is a candidate rule.
+- Plan mode, and Codex's static rules, are not estimated.
+
+Writing the log never changes a decision: the answer is written first, and
+a log that cannot be written (a full disk, a file where the folder should
+be) is skipped without a word. `make asks` summarizes it, by decision, by
+reason, and by command for the unmatched lines:
+
+```shell
+make asks
+make asks ASK_LOG=/path/to/asks.jsonl
+```
+
+The report runs in the test container on a copy of the log. Delete the file
+to start counting again.
+
 ## Telling agents about it
 
 The guard explains each refusal, but agents do better knowing in advance.

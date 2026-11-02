@@ -14,7 +14,7 @@ Decides, for every shell command a coding agent wants to run, whether it runs wi
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the two layers, how each agent receives them, how the guard reads a command
 - [docs/POLICY.md](docs/POLICY.md): tiers, rule format, how to change a rule
 - [docs/SCRATCHPAD.md](docs/SCRATCHPAD.md): the agent-scratch helper
-- [docs/OPERATIONS.md](docs/OPERATIONS.md): install, update both ways, harvest, protected deployments
+- [docs/OPERATIONS.md](docs/OPERATIONS.md): install, update both ways, harvest, protected deployments, the ask log
 - [policy/](policy/): the rules, one TOML file per area
 - [hooks/guard](hooks/guard): the PreToolUse hook
 - [lib/agent_policy/](lib/agent_policy/): command parsing and checks
