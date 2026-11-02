@@ -177,13 +177,23 @@ def claude_rules(rules):
 
 
 def guard_allow(rules):
-    """The Claude allow prefixes, as word lists, for the guard's approve()."""
-    out = []
+    """What the guard reads of the Claude rules: the allow prefixes, as word
+    lists, for approve(); and each ask or deny rule, by prefix or by Claude
+    pattern, so the ask log (lib/agent_policy/asklog.py) can tell which
+    static rule a command meets."""
+    out, static = [], []
     for rule in rules:
-        if "claude" in rule["agents"] and decision_of(rule) == "allow":
+        if "claude" not in rule["agents"]:
+            continue
+        decision = decision_of(rule)
+        if decision == "allow":
             for prefix in rule["prefix"]:
                 out.extend(w for w in expand(prefix) if w not in out)
-    return {"prefixes": out}
+            continue
+        entry = {"decision": decision, "rule": rule["source"]}
+        static.extend(dict(entry, prefix=w) for p in rule["prefix"] for w in expand(p))
+        static.extend(dict(entry, pattern=p) for p in rule["claude"] if p.startswith("Bash("))
+    return {"prefixes": out, "static": static}
 
 
 def render_claude(rules, libexec, scratch=True, mode="hardened"):

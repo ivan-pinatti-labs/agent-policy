@@ -88,6 +88,19 @@ class Render(unittest.TestCase):
         self.assertNotIn(["git", "reset"], allow["prefixes"])
         self.assertEqual(len(allow["prefixes"]), len({tuple(p) for p in allow["prefixes"]}))
 
+    def test_the_guard_gets_the_ask_and_deny_rules(self):
+        # The ask log (lib/agent_policy/asklog.py) names the rule a line meets.
+        static = json.loads((Path(self.tmp) / "claude" / "guard-allow.json").read_text())["static"]
+        self.assertIn(
+            {"decision": "ask", "rule": "10-git.toml rule 3", "prefix": ["git", "clean"]}, static
+        )
+        self.assertIn("Bash(*terraform destroy*)", [e.get("pattern") for e in static])
+        self.assertFalse([e for e in static if e["decision"] == "allow"])
+        self.assertFalse([e for e in static if "WebFetch" in e.get("pattern", "")])
+        # A Codex only rule is not Claude's.
+        codex_only = {"agents": ["codex"], "severity": "high", "prefix": [["x"]], "claude": []}
+        self.assertEqual({"prefixes": [], "static": []}, render.guard_allow([codex_only]))
+
     def test_agent_logins_cannot_be_read_or_written_by_file_tools(self):
         deny = self.claude["permissions"]["deny"]
         for tool in ("Read", "Edit"):

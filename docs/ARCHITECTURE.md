@@ -188,6 +188,17 @@ the command, and gives the user the exact line to run themselves:
 A payload the guard cannot read is refused rather than allowed: a hook that
 lets everything through the moment it breaks still looks like protection.
 
+### The ask log
+
+With the ask log on ([OPERATIONS.md](OPERATIONS.md#the-ask-log)), the guard
+also appends a line for each prompt or refusal it can see, after it has
+answered: its own findings, and, for a line it is silent on, the ask or deny
+rule of the rendered Claude rules that matches it, or the commands no allow
+rule matches. Each finding names the check that found it (`Finding.check`),
+so a line records that fixed word, never the finding's reason text, which
+can quote a path. `lib/agent_policy/asklog.py` holds it; any failure there
+is swallowed, so the log cannot change a decision.
+
 ### Reading a command
 
 `lib/agent_policy/shell.py` splits a command line into the simple commands

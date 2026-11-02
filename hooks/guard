@@ -19,10 +19,15 @@ cwd) and answers only when lib/agent_policy/checks.py finds something:
         (approve() in checks.py). Every deny and ask rule still applies.
 
 Silence means no opinion: the static rules (policy/*.toml) decide.
+
+With the ask log on (lib/agent_policy/asklog.py), every ask and deny it can
+see is also appended to a local file, after the answer is written; a log
+that cannot be written changes nothing.
 """
 
 import json
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -31,6 +36,7 @@ HERE = Path(__file__).resolve().parent
 LIB = HERE / "lib" if (HERE / "lib" / "agent_policy").is_dir() else HERE.parent / "lib"
 sys.path.insert(0, str(LIB))
 
+from agent_policy import asklog
 from agent_policy.checks import MODES, approve, evaluate
 
 # A hook that crashes reports a non-blocking error, and the command runs
@@ -58,6 +64,7 @@ def respond(decision, reason):
         },
         sys.stdout,
     )
+    sys.stdout.flush()
 
 
 def option(argv, name, default=None):
@@ -66,19 +73,79 @@ def option(argv, name, default=None):
     return default
 
 
-def load_allowed(path):
-    """The allowed prefixes tools/render.py wrote, or none. A file that is
-    missing or unreadable approves nothing, which leaves every decision to
-    the static rules: a prompt, never a command let through."""
+def load_rules(path):
+    """What tools/render.py wrote to guard-allow.json, or nothing."""
     if path is None:
-        return []
+        return {}
     try:
-        prefixes = json.loads(Path(path).read_text()).get("prefixes")
-    except (OSError, ValueError, AttributeError):
-        return []
+        data = json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def load_allowed(data):
+    """The allowed prefixes, or none. A file that is missing or unreadable
+    approves nothing, which leaves every decision to the static rules: a
+    prompt, never a command let through."""
+    prefixes = data.get("prefixes")
     if not isinstance(prefixes, list):
         return []
     return [p for p in prefixes if isinstance(p, list) and p and all(isinstance(w, str) for w in p)]
+
+
+# How long the ask log may take, well inside the hook's 10 second timeout.
+LOG_SECONDS = 2
+
+
+def _stalled(_signum, _frame):
+    raise TimeoutError("the ask log took too long")
+
+
+def log_ask(record):
+    """Append `record()` to the ask log (lib/agent_policy/asklog.py) when the
+    log is on and `record()` is not None. Called only once the answer is
+    written. Never raises and never takes longer than LOG_SECONDS: the log
+    must not change a decision or keep the hook past its timeout."""
+    previous = signal.signal(signal.SIGALRM, _stalled)
+    signal.setitimer(signal.ITIMER_REAL, LOG_SECONDS)
+    try:
+        log = asklog.path()
+        line = record() if log else None
+        if line:
+            asklog.append(log, line)
+    except Exception:
+        # The log is best effort: whatever went wrong, the answer stands.
+        return
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+def unchecked(agent, mode, command="", cwd=""):
+    return lambda: asklog.entry(agent, mode, "guard", "deny", "unchecked", command, cwd)
+
+
+def found(agent, mode, command, cwd, finding):
+    reason = finding.key or finding.check
+    return lambda: asklog.entry(
+        agent, mode, "guard", finding.decision, reason, command, cwd, finding.severity
+    )
+
+
+def left_to_rules(agent, mode, command, cwd, data):
+    """The record for a line the guard was silent on, if the rendered rules
+    ask, deny or match nothing on it."""
+
+    def record():
+        home = os.environ.get("HOME") or os.path.expanduser("~")
+        verdict = asklog.classify(command, cwd, home, load_allowed(data), asklog.static_rules(data))
+        if verdict is None:
+            return None
+        decision, rule, unmatched = verdict
+        return asklog.entry(agent, mode, "rules", decision, rule, command, cwd, None, unmatched)
+
+    return record
 
 
 def main(argv):
@@ -88,11 +155,13 @@ def main(argv):
     mode = option(argv, "--mode", "hardened")
     mode = mode if mode in MODES else "hardened"
     # Codex is never approved: its allow runs a command outside its sandbox.
-    allowed = load_allowed(option(argv, "--allow")) if agent == "claude" else []
+    data = load_rules(option(argv, "--allow")) if agent == "claude" else {}
+    allowed = load_allowed(data)
     try:
         payload = json.load(sys.stdin)
     except ValueError:
         respond("deny", UNCHECKED)
+        log_ask(unchecked(agent, mode))
         return 0
     tool_input = payload.get("tool_input") if isinstance(payload, dict) else None
     command = tool_input.get("command") if isinstance(tool_input, dict) else None
@@ -101,10 +170,12 @@ def main(argv):
     if not isinstance(command, str) or not command.strip():
         if not isinstance(payload, dict):
             respond("deny", UNCHECKED)
+            log_ask(unchecked(agent, mode))
         return 0
     cwd = payload.get("cwd")
     cwd = cwd if isinstance(cwd, str) and cwd else os.getcwd()
-    # Plan mode is read only, so nothing is approved there.
+    # Plan mode is read only, so nothing is approved there, and nothing it
+    # leaves to the rules is logged as a prompt.
     if payload.get("permission_mode") == "plan":
         allowed = []
     try:
@@ -112,6 +183,7 @@ def main(argv):
         approved = finding is None and approve(command, cwd, allowed)
     except Exception:
         respond("deny", UNCHECKED)
+        log_ask(unchecked(agent, mode, command, cwd))
         return 0
     if approved:
         respond(
@@ -121,6 +193,10 @@ def main(argv):
         )
         return 0
     if finding is None:
+        # Only Claude Code's hook is given the rules (--allow), and without
+        # them there is nothing to tell an allowed line from one that asks.
+        if allowed:
+            log_ask(left_to_rules(agent, mode, command, cwd, data))
         return 0
     one_line = " ".join(command.split())
     tag = f"agent-policy, {finding.severity}"
@@ -138,6 +214,7 @@ def main(argv):
         )
     else:
         respond("ask", f"{tag}: {finding.reason}")
+    log_ask(found(agent, mode, command, cwd, finding))
     return 0
 
 

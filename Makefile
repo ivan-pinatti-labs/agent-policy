@@ -8,7 +8,7 @@
 # checkmake reads only the first physical line of a .PHONY declaration and
 # silently drops backslash continuations, so every .PHONY here is written on
 # one line (checkmake#280).
-.PHONY: all help workbench-help image build test coverage harvest backup backups restore install uninstall diff clean
+.PHONY: all help workbench-help image build test coverage harvest asks backup backups restore install uninstall diff clean
 
 # Bare `make` shows the target list rather than doing something surprising.
 all: help
@@ -30,6 +30,8 @@ PYTHON             ?= /usr/bin/python3
 BACKUP_ROOT  ?= $(or $(XDG_STATE_HOME),$(HOME)/.local/state)/agent-policy/backups
 BACKUP_PATHS  = $(patsubst %/,%,$(dir $(CLAUDE_MANAGED_DIR))) $(CODEX_SYSTEM_DIR)
 BACKUP_PATHS += $(LIBEXEC) $(PREFIX)/bin/agent-scratch $(addsuffix /rules,$(CODEX_HOMES))
+# Where the guard writes the ask log when it is on (lib/agent_policy/asklog.py).
+ASK_LOG      ?= $(or $(XDG_STATE_HOME),$(HOME)/.local/state)/agent-policy/asks.jsonl
 ENGINE             ?= podman
 
 # The folder holding this repository's main clone, which is where its sibling
@@ -68,6 +70,7 @@ help:
 		'  coverage    Run the tests with coverage, writing coverage.xml; fails under 100%.' \
 		'  build       Build the policy for both agents into dist/.' \
 		'  harvest     Compare this machine'"'"'s permission files with the policy.' \
+		'  asks        Summarize the ask log: what prompted or was refused, and why.' \
 		'  diff        Show how the installed policy differs from this checkout.' \
 		'  install     Back up, then install for both agents and every profile (sudo).' \
 		'  uninstall   Back up, then remove everything install added (sudo).' \
@@ -103,6 +106,14 @@ harvest: image
 	tools/collect.sh "$$staging" $(HARVEST_ROOTS) && \
 	$(ENGINE) run --rm --network=none --userns=keep-id:uid=1000,gid=1000 -v "$(CURDIR):/work:ro,Z" \
 		-v "$$staging:/staging:ro,Z" -w /work $(TEST_IMAGE) python3 tools/harvest.py /staging
+
+# The ask log (docs/OPERATIONS.md, "The ask log") reaches the container on
+# standard input, so it sees that one file and nothing else of the home
+# folder.
+asks: image
+	@test -f "$(ASK_LOG)" || { echo "asks: no log at $(ASK_LOG) (is the ask log on?)"; exit 1; }
+	@$(ENGINE) run --rm -i --network=none --userns=keep-id:uid=1000,gid=1000 -v "$(CURDIR):/work:ro,Z" \
+		-w /work $(TEST_IMAGE) python3 tools/asks.py < "$(ASK_LOG)"
 
 # A failed backup stops make here, before anything is built or installed.
 backup:
