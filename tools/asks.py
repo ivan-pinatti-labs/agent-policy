@@ -3,10 +3,10 @@
 """Summarize the ask log (lib/agent_policy/asklog.py): how often the policy
 asked or refused, why, and on which commands.
 
-  python3 tools/asks.py [--top N] <asks.jsonl>
+  python3 tools/asks.py [--top N] < asks.jsonl
 
-`make asks` runs it in the test container on a copy of the log.
-Standard library only.
+It reads the log on standard input and opens no file, so `make asks` hands
+the test container that one file and nothing else. Standard library only.
 """
 
 import argparse
@@ -15,22 +15,21 @@ import sys
 from collections import Counter
 
 
-def read(path):
-    """The log's records, and how many lines were not records."""
+def read(lines):
+    """The records among `lines`, and how many lines were not records."""
     records, skipped = [], 0
-    with open(path, encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            if not line.strip():
-                continue
-            try:
-                record = json.loads(line)
-            except ValueError:
-                skipped += 1
-                continue
-            if isinstance(record, dict):
-                records.append(record)
-            else:
-                skipped += 1
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            skipped += 1
+            continue
+        if isinstance(record, dict):
+            records.append(record)
+        else:
+            skipped += 1
     return records, skipped
 
 
@@ -75,16 +74,11 @@ def summarize(records, top=20):
     return out
 
 
-def main(argv=None):
+def main(argv=None, stdin=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("log")
     parser.add_argument("--top", type=int, default=20, help="rows per table (default 20)")
     args = parser.parse_args(argv)
-    try:
-        records, skipped = read(args.log)
-    except OSError as err:
-        print(f"asks: cannot read {args.log}: {err.strerror}", file=sys.stderr)
-        return 1
+    records, skipped = read(sys.stdin if stdin is None else stdin)
     print("\n".join(summarize(records, args.top)))
     if skipped:
         print(f"asks: skipped {skipped} lines that are not records")

@@ -107,15 +107,13 @@ harvest: image
 	$(ENGINE) run --rm --network=none --userns=keep-id:uid=1000,gid=1000 -v "$(CURDIR):/work:ro,Z" \
 		-v "$$staging:/staging:ro,Z" -w /work $(TEST_IMAGE) python3 tools/harvest.py /staging
 
-# The ask log (docs/OPERATIONS.md, "The ask log") is copied into a temporary
-# folder, so the container sees that one file and nothing else of the home
+# The ask log (docs/OPERATIONS.md, "The ask log") reaches the container on
+# standard input, so it sees that one file and nothing else of the home
 # folder.
 asks: image
 	@test -f "$(ASK_LOG)" || { echo "asks: no log at $(ASK_LOG) (is the ask log on?)"; exit 1; }
-	@staging="$$(mktemp -d)"; trap 'rm -rf "$$staging"' EXIT; \
-	cp "$(ASK_LOG)" "$$staging/asks.jsonl" && \
-	$(ENGINE) run --rm --network=none --userns=keep-id:uid=1000,gid=1000 -v "$(CURDIR):/work:ro,Z" \
-		-v "$$staging:/staging:ro,Z" -w /work $(TEST_IMAGE) python3 tools/asks.py /staging/asks.jsonl
+	@$(ENGINE) run --rm -i --network=none --userns=keep-id:uid=1000,gid=1000 -v "$(CURDIR):/work:ro,Z" \
+		-w /work $(TEST_IMAGE) python3 tools/asks.py < "$(ASK_LOG)"
 
 # A failed backup stops make here, before anything is built or installed.
 backup:

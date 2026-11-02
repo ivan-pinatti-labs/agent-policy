@@ -175,7 +175,8 @@ make asks
 make asks ASK_LOG=/path/to/asks.jsonl
 ```
 
-The report runs in the test container on a copy of the log. Delete the file
+The report runs in the test container and gets the log on standard input,
+so it sees that one file and nothing else. Delete the file
 to start counting again.
 
 ## Telling agents about it

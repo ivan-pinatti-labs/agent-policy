@@ -306,35 +306,26 @@ class Report(unittest.TestCase):
         self.assertEqual(["asks: the log is empty"], asks.summarize([]))
 
     def test_main(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            log = Path(tmp) / "asks.jsonl"
-            log.write_text('{"ts": "t", "source": "guard"}\n\nnot json\n[1]\n')
-            out = io.StringIO()
-            with contextlib.redirect_stdout(out):
-                self.assertEqual(0, asks.main([str(log), "--top", "1"]))
-            self.assertIn("1 prompts or refusals", out.getvalue())
-            self.assertIn("skipped 2 lines", out.getvalue())
-            log.write_text("")
-            out = io.StringIO()
-            with contextlib.redirect_stdout(out):
-                self.assertEqual(0, asks.main([str(log)]))
-            self.assertNotIn("skipped", out.getvalue())
-            err = io.StringIO()
-            with contextlib.redirect_stderr(err):
-                self.assertEqual(1, asks.main([str(Path(tmp) / "missing")]))
-            self.assertIn("cannot read", err.getvalue())
+        out = io.StringIO()
+        log = io.StringIO('{"ts": "t", "source": "guard"}\n\nnot json\n[1]\n')
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(0, asks.main(["--top", "1"], stdin=log))
+        self.assertIn("1 prompts or refusals", out.getvalue())
+        self.assertIn("skipped 2 lines", out.getvalue())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(0, asks.main([], stdin=io.StringIO("")))
+        self.assertNotIn("skipped", out.getvalue())
 
-    def test_script(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            log = Path(tmp) / "asks.jsonl"
-            log.write_text("")
-            proc = subprocess.run(
-                [sys.executable, str(ROOT / "tools" / "asks.py"), str(log)],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            self.assertIn("empty", proc.stdout)
+    def test_script_reads_standard_input(self):
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "tools" / "asks.py")],
+            input="",
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertIn("empty", proc.stdout)
 
 
 if __name__ == "__main__":
