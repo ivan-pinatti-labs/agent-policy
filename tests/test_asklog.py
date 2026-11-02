@@ -98,6 +98,21 @@ class Classify(unittest.TestCase):
         decision, rule, _ = self.classify("git -C /work/other update-ref -d refs/x")
         self.assertEqual(("ask", "10-git.toml rule 3"), (decision, rule))
 
+    def test_an_aws_profile_in_front(self):
+        # approve() allows the read, so it is no prompt; any other variable
+        # in front leaves it unmatched, and a write meets its rule.
+        self.assertIsNone(self.classify("AWS_PROFILE=dev-readonly kubectl get pods"))
+        self.assertEqual(
+            ("unmatched", "no-allow-match", ["kubectl"]),
+            self.classify("KUBECONFIG=/tmp/kubeconfig kubectl get pods"),
+        )
+        decision, rule, _ = self.classify("AWS_PROFILE=dev-readonly eksctl delete cluster -n c")
+        self.assertEqual("deny", decision)
+        self.assertTrue(rule.startswith("46-eksctl.toml"))
+        decision, rule, _ = self.classify("kubeseal --fetch-cert --recovery-unseal")
+        self.assertEqual("deny", decision)
+        self.assertTrue(rule.startswith("48-kubeseal.toml"))
+
     def test_allowed_lines_are_not_prompts(self):
         for command in ("git status", "git -C /work/other log | head -5", "cd x", "> out"):
             with self.subTest(command=command):
