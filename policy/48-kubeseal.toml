@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# kubeseal (Sealed Secrets). Fetching the controller's public certificate
+# and validating a sealed secret is free. Sealing reads a plain Secret, and
+# re-encrypting, merging into a file or writing the output file changes
+# something, so those ask. Unsealing with the controller's private key
+# prints every secret in the clear, so it is handed to the user. kubeseal
+# takes flags, not subcommands, and they can come in any order, hence the
+# globs, which start with `*` so that `AWS_PROFILE=x kubeseal ...` matches
+# too.
+
+[[rule]]
+severity = "read"
+reason = "Fetch the sealing certificate or validate a sealed secret"
+prefix = [["kubeseal", ["--fetch-cert", "--validate", "--version"]]]
+
+[[rule]]
+severity = "high"
+reason = "Seals a secret read from a file, re-encrypts, or writes a file"
+prefix = [["kubeseal", ["--re-encrypt", "--merge-into", "--raw"]]]
+claude = [
+  "Bash(*kubeseal*--re-encrypt*)", "Bash(*kubeseal*--merge-into*)",
+  "Bash(*kubeseal*--sealed-secret-file*)", "Bash(*kubeseal* -w *)",
+  "Bash(*kubeseal*--from-file*)", "Bash(*kubeseal*--secret-file*)",
+]
+
+[[rule]]
+severity = "critical"
+reason = "Decrypts sealed secrets with the controller's private key: the user runs it"
+prefix = [["kubeseal", ["--recovery-unseal", "--recovery-private-key"]]]
+claude = ["Bash(*kubeseal*--recovery-unseal*)", "Bash(*kubeseal*--recovery-private-key*)"]

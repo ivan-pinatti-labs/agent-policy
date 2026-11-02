@@ -102,3 +102,42 @@ expect = "allow"
 [[case]]
 command = ["asdf", "plugin", "add", "x"]
 expect = "prompt"
+[[case]]
+command = ["eksctl", "get", "cluster"]
+expect = "allow"
+[[case]]
+command = ["eksctl", "utils", "describe-stacks", "--cluster", "c"]
+expect = "allow"
+[[case]]
+command = ["eksctl", "utils", "write-kubeconfig", "--cluster", "c"]
+expect = "prompt"
+[[case]]
+command = ["eksctl", "delete", "nodegroup", "--cluster", "c", "--name", "n"]
+expect = "prompt"
+[[case]]
+command = ["eksctl", "delete", "cluster", "--name", "c"]
+expect = "forbidden"
+[[case]]
+command = ["helmfile", "diff"]
+expect = "allow"
+[[case]]
+command = ["helmfile", "deps"]
+expect = "allow"
+[[case]]
+command = ["helmfile", "apply"]
+expect = "prompt"
+[[case]]
+command = ["helmfile", "destroy"]
+expect = "forbidden"
+[[case]]
+command = ["kubeseal", "--fetch-cert"]
+expect = "allow"
+[[case]]
+command = ["kubeseal", "--re-encrypt"]
+expect = "prompt"
+[[case]]
+command = ["kubeseal", "--recovery-unseal", "--recovery-private-key", "k"]
+expect = "forbidden"
+[[case]]
+command = ["pluto", "detect-files", "-d", "."]
+expect = "allow"

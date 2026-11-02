@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# pluto (Fairwinds). Finds deprecated Kubernetes API versions in files, Helm
+# releases or a live cluster. Every command reads and prints; nothing is
+# written.
+
+[[rule]]
+severity = "read"
+reason = "Find deprecated Kubernetes API versions"
+prefix = [
+  ["pluto", ["detect", "detect-files", "detect-helm", "detect-api-resources",
+              "detect-all-in-cluster", "list-versions", "version"]],
+]

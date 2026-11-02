@@ -39,6 +39,7 @@ class GuardCases(unittest.TestCase):
     def test_cases(self):
         with open(ROOT / "tests" / "guard_cases.toml", "rb") as handle:
             cases = tomllib.load(handle)["case"]
+        allowed = allowed_prefixes()
         for case in cases:
             with self.subTest(command=case["command"]):
                 finding = evaluate(
@@ -50,6 +51,15 @@ class GuardCases(unittest.TestCase):
                 )
                 got = finding.decision if finding else "none"
                 self.assertEqual(case["expect"], got, finding.reason if finding else "no finding")
+                if "approve" in case:
+                    approved = approve(
+                        case["command"],
+                        case.get("cwd", "/work/project"),
+                        allowed,
+                        env=ENV,
+                        inspector=fake_inspect,
+                    )
+                    self.assertEqual(case["approve"], approved, "approve()")
 
 
 def allowed_prefixes():

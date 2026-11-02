@@ -42,6 +42,27 @@ class Render(unittest.TestCase):
         self.assertIn("Bash(*git*push*--force*)", perms["deny"])
         self.assertNotIn("Bash(env *)", perms["allow"])
 
+    def test_infrastructure_tools(self):
+        perms = self.claude["permissions"]
+        for rule in (
+            "eksctl get *",
+            "helmfile diff *",
+            "kubeseal --fetch-cert *",
+            "pluto detect *",
+        ):
+            self.assertIn(f"Bash({rule})", perms["allow"])
+        # The read rule allows `eksctl utils describe-stacks`, so `utils` as a
+        # whole must not ask, or the ask would win.
+        self.assertNotIn("Bash(eksctl utils *)", perms["ask"])
+        for rule in ("*helmfile *--helm-binary*", "*kubeseal*--re-encrypt*", "*eksctl create *"):
+            self.assertIn(f"Bash({rule})", perms["ask"])
+        for rule in (
+            "*eksctl delete cluster*",
+            "*helmfile destroy*",
+            "*kubeseal*--recovery-unseal*",
+        ):
+            self.assertIn(f"Bash({rule})", perms["deny"])
+
     def test_no_rule_claude_code_warns_about(self):
         # File tools match only Edit(...) rules (Edit covers Write). A `:*`
         # is the old prefix syntax: anywhere but the end it warns, and at the

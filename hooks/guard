@@ -13,7 +13,8 @@ cwd) and answers only when lib/agent_policy/checks.py finds something:
         needed.
 
   allow Claude Code only, and only with --allow: a command the static
-        rules would allow but for `git -C <dir>` or an aws read verb, which
+        rules would allow but for `git -C <dir>`, an aws read verb, or an
+        AWS profile or region set in front of an infrastructure tool, which
         they cannot express without a wildcard Claude Code warns about
         (approve() in checks.py). Every deny and ask rule still applies.
 
@@ -113,7 +114,11 @@ def main(argv):
         respond("deny", UNCHECKED)
         return 0
     if approved:
-        respond("allow", "agent-policy: allowed once the guard read past git -C or an aws service")
+        respond(
+            "allow",
+            "agent-policy: allowed once the guard read past git -C, an aws service"
+            " or an AWS profile in front",
+        )
         return 0
     if finding is None:
         return 0

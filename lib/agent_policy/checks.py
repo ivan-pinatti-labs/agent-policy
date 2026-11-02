@@ -9,8 +9,10 @@ critical (deny, a hand-off to the user).
 
 approve() is the one place the guard allows: a command the static rules
 would allow but for an option before the subcommand (`git -C <dir> status`)
-or a read verb after an unknown service (`aws ec2 describe-instances`).
-A static rule for those needs a `*` before the subcommand, which also
+or a read verb after an unknown service (`aws ec2 describe-instances`),
+or an AWS profile or region set in front of an infrastructure tool
+(`AWS_PROFILE=x kubectl get pods`). A static rule for those needs a `*`
+before the subcommand (or before the tool), which also
 matches any option inserted there, so Claude Code warns about it at every
 start. The guard reads the option instead, and allows only what it can
 see. Claude Code still applies every deny and ask rule over an allow from
@@ -122,9 +124,35 @@ def evaluate(command, cwd, env=None, inspector=containers.inspect, mode="hardene
 
 
 # Variables a command may set and still be approved: each only picks which
-# account or region an aws read goes to. AWS_PAGER is not one: it names a
-# program to run.
-APPROVE_ENV = {"aws": {"AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION"}}
+# AWS account or region a read goes to, for aws itself and for the tools that
+# reach AWS through it (an EKS cluster's credentials, a Terraform backend).
+# Nothing else, however harmless it looks:
+#   AWS_PAGER names a program to run;
+#   KUBECONFIG names a file whose exec plugin runs a program of its choosing;
+#   ATMOS_IDENTITY=false switches atmos from the identity it was configured
+#   with to whatever credentials the AWS SDK finds around it;
+#   TF_* passes options (TF_CLI_ARGS_plan), plugin folders and providers'
+#   own settings that a prefix rule never sees.
+AWS_ENV = frozenset({"AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION"})
+APPROVE_ENV = dict.fromkeys(
+    (
+        "aws",
+        "atmos",
+        "terraform",
+        "tofu",
+        "kubectl",
+        "helm",
+        "eksctl",
+        "helmfile",
+        "kubeseal",
+        "pluto",
+    ),
+    AWS_ENV,
+)
+# Options that run another program or swap the kubeconfig, for the same
+# reason as KUBECONFIG above. A line with a variable in front and one of
+# these is left to the static rules.
+EXEC_OPTIONS = ("--kubeconfig", "--helm-binary", "--kustomize-binary", "--post-renderer")
 # aws options that change whom a read trusts, so a read carrying one is left
 # to the static rules: --no-verify-ssl turns off certificate checks, and
 # --ca-bundle swaps the certificates they check against.
@@ -193,7 +221,13 @@ def _approval(seg, prefixes, cwd, home):
     if any(t not in QUIET_REDIRECTS and not t.startswith("&") for _, t in seg.redirects):
         return None
     if _allowed_prefix(seg.words, prefixes):
-        return "static"
+        if not seg.env:
+            return "static"
+        # A static rule cannot match a command with a variable in front
+        # (`AWS_PROFILE=x kubectl get pods`), so the guard allows it, unless
+        # an option changes what runs or whom it trusts.
+        refused = EXEC_OPTIONS + AWS_TRUST_OPTIONS
+        return None if any(w.split("=", 1)[0] in refused for w in seg.words) else "read"
     if seg.name == "git":
         words, dirs = _without_git_dirs(seg.words)
         if not dirs or any(_unresolved(d) for d in dirs):
