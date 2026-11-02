@@ -157,14 +157,27 @@ APPROVE_ENV = dict.fromkeys(
     ),
     AWS_ENV,
 )
-# Options that run another program or swap the kubeconfig, for the same
-# reason as KUBECONFIG above. A line with a variable in front and one of
-# these is left to the static rules.
-EXEC_OPTIONS = ("--kubeconfig", "--helm-binary", "--kustomize-binary", "--post-renderer")
+# Options that run another program, swap the kubeconfig (for the same reason
+# as KUBECONFIG above) or write a file the guard does not judge (a Terraform
+# plan's -out). A line with a variable in front and one of these is left to
+# the static rules.
+EXEC_OPTIONS = (
+    "--kubeconfig",
+    "--helm-binary",
+    "--kustomize-binary",
+    "--post-renderer",
+    "-out",
+    "--out",
+    "-generate-config-out",
+)
+# helmfile's short forms of --helm-binary and --kustomize-binary, which also
+# take their value joined (`-b/tmp/x`).
+HELMFILE_EXEC_SHORT = ("-b", "-k")
 # aws options that change whom a read trusts, so a read carrying one is left
-# to the static rules: --no-verify-ssl turns off certificate checks, and
-# --ca-bundle swaps the certificates they check against.
-AWS_TRUST_OPTIONS = ("--no-verify-ssl", "--ca-bundle")
+# to the static rules: --no-verify-ssl turns off certificate checks,
+# --ca-bundle swaps the certificates they check against, and --endpoint-url
+# sends the signed request to another host.
+AWS_TRUST_OPTIONS = ("--no-verify-ssl", "--ca-bundle", "--endpoint-url")
 # aws options that take no value, besides every --no-* one. A word after one
 # is a positional argument, not its value.
 AWS_FLAGS = {"--debug", "--dry-run", "--cli-auto-prompt"}
@@ -233,9 +246,13 @@ def _approval(seg, prefixes, cwd, home):
             return "static"
         # A static rule cannot match a command with a variable in front
         # (`AWS_PROFILE=x kubectl get pods`), so the guard allows it, unless
-        # an option changes what runs or whom it trusts.
+        # an option changes what runs, what it writes or whom it trusts.
         refused = EXEC_OPTIONS + AWS_TRUST_OPTIONS
-        return None if any(w.split("=", 1)[0] in refused for w in seg.words) else "read"
+        if any(w.split("=", 1)[0] in refused for w in seg.words):
+            return None
+        if seg.name == "helmfile" and any(w[:2] in HELMFILE_EXEC_SHORT for w in seg.words):
+            return None
+        return "read"
     if seg.name == "git":
         words, dirs = _without_git_dirs(seg.words)
         if not dirs or any(_unresolved(d) for d in dirs):
@@ -398,6 +415,7 @@ def _check(seg, ctx):
         "podman-compose": _compose,
         "docker-compose": _compose,
         "yq": _yq,
+        "kubeseal": _kubeseal,
     }.get(seg.name)
     if handler:
         yield from _tagged(handler, handler(seg, ctx))
@@ -408,6 +426,17 @@ def _check(seg, ctx):
 # to judge; eval runs an expression read from the data, which can hold one.
 # --security-disable-file-ops turns them off.
 YQ_LOAD = re.compile(r"\b(?:load(?:_[a-z0-9]+)?|eval)\s*\(")
+
+
+# kubeseal's flags come in any order, so a prefix rule sees these only first.
+KUBESEAL_UNSEAL = ("--recovery-unseal", "--recovery-private-key")
+
+
+def _kubeseal(seg, ctx):
+    if any(w.split("=", 1)[0] in KUBESEAL_UNSEAL for w in seg.words[1:]):
+        yield Finding(
+            "critical", "kubeseal decrypts sealed secrets with the controller's private key"
+        )
 
 
 def _yq(seg, ctx):

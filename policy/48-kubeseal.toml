@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # kubeseal (Sealed Secrets). Fetching the controller's public certificate
-# and validating a sealed secret is free. Sealing reads a plain Secret, and
-# re-encrypting, merging into a file or writing the output file changes
-# something, so those ask. Unsealing with the controller's private key
+# and validating a sealed secret is free. Sealing a Secret read from a file,
+# re-encrypting, merging into a file or writing the output file asks.
+# Sealing from standard input (`kubeseal < secret.yaml`) is not listed: no
+# prefix tells it from a read with its options first, so it falls to the
+# agent's own prompt like any unlisted command. Unsealing with the controller's private key
 # prints every secret in the clear, so it is handed to the user. kubeseal
 # takes flags, not subcommands, and they can come in any order, hence the
 # globs, which start with `*` so that `AWS_PROFILE=x kubeseal ...` matches
@@ -11,6 +13,8 @@
 
 [[rule]]
 severity = "read"
+# Claude only: a Codex allow would run these outside Codex's sandbox.
+agents = ["claude"]
 reason = "Fetch the sealing certificate or validate a sealed secret"
 prefix = [["kubeseal", ["--fetch-cert", "--validate", "--version"]]]
 
@@ -27,5 +31,8 @@ claude = [
 [[rule]]
 severity = "critical"
 reason = "Decrypts sealed secrets with the controller's private key: the user runs it"
+# The guard refuses these flags in any position too (_kubeseal in
+# lib/agent_policy/checks.py), for Codex, whose prefix rules see only the
+# first.
 prefix = [["kubeseal", ["--recovery-unseal", "--recovery-private-key"]]]
 claude = ["Bash(*kubeseal*--recovery-unseal*)", "Bash(*kubeseal*--recovery-private-key*)"]

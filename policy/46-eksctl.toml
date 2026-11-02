@@ -9,6 +9,8 @@
 
 [[rule]]
 severity = "read"
+# Claude only: a Codex allow would run these outside Codex's sandbox.
+agents = ["claude"]
 reason = "Read EKS clusters, node groups and add-ons"
 prefix = [
   ["eksctl", ["get", "info", "version"]],
@@ -40,4 +42,6 @@ claude = [
 severity = "severe"
 reason = "Deletes a whole EKS cluster: the user runs it"
 prefix = [["eksctl", "delete", "cluster"]]
-claude = ["Bash(*eksctl delete cluster*)"]
+# The second pattern matches options before `delete` (`eksctl -v 4 delete
+# cluster`), which the prefix cannot.
+claude = ["Bash(*eksctl delete cluster*)", "Bash(*eksctl * delete cluster*)"]

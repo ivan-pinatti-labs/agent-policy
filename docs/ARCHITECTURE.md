@@ -54,6 +54,8 @@ what a prefix cannot see, and the strictest finding wins:
   engine socket, or a mount path with an unexpanded variable);
 - the operation an `aws` command performs (a write verb mid-line, an
   irreversible call, or one that returns a secret value);
+- `kubeseal` unsealing with the controller's private key, wherever the
+  flag sits on the line;
 - who a container belongs to (the guard asks the engine, so it can refuse
   `podman stop` on a protected deployment by name);
 - recursive removal of the home folder, credentials or a protected
@@ -171,9 +173,10 @@ So the renderer leaves those out, and the guard allows the command itself
   than `AWS_PROFILE`, `AWS_REGION` or `AWS_DEFAULT_REGION` in front of aws,
   atmos, terraform, tofu, kubectl, helm, eksctl, helmfile, kubeseal or pluto
   (`APPROVE_ENV`), or redirects anywhere but `/dev/null`; no command with a
-  variable in front carries an option that runs another program or swaps
-  the kubeconfig (`--kubeconfig`, `--helm-binary`, `--post-renderer`...);
-  and no `-C` folder is a credential folder or a path it cannot resolve.
+  variable in front carries an option that runs another program, swaps the
+  kubeconfig, writes a file or changes whom an aws read trusts
+  (`--kubeconfig`, `--helm-binary`, `--post-renderer`, `-out`,
+  `--endpoint-url`...); and no `-C` folder is a credential folder or a path it cannot resolve.
 
 Claude Code applies every deny and ask rule over an allow from a hook, so
 this can only stand in for a static allow, never lift a prompt or a refusal.

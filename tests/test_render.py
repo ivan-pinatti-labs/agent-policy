@@ -63,6 +63,34 @@ class Render(unittest.TestCase):
         ):
             self.assertIn(f"Bash({rule})", perms["deny"])
 
+    def test_infrastructure_forms_the_prefixes_miss(self):
+        # Each command, bare or with a profile in front, meets a Claude ask
+        # or deny pattern, read with `*` as any text, as Claude Code does.
+        import re
+
+        def meets(command, decision):
+            for rule in self.claude["permissions"][decision]:
+                body = rule[len("Bash(") : -1] if rule.startswith("Bash(") else None
+                regex = body and "".join(".*" if c == "*" else re.escape(c) for c in body)
+                if regex and re.fullmatch(regex, command, re.S):
+                    return True
+            return False
+
+        for prefix in ("", "AWS_PROFILE=dev-readonly "):
+            for command in ("helmfile -b /tmp/x diff", "helmfile diff -k/tmp/x"):
+                with self.subTest(command=prefix + command):
+                    self.assertTrue(meets(prefix + command, "ask"))
+            for command in (
+                "helmfile destroy",
+                "helmfile delete",
+                "helmfile -e prod destroy",
+                "helmfile -e prod delete",
+                "eksctl delete cluster --name c",
+                "eksctl -v 4 delete cluster --name c",
+            ):
+                with self.subTest(command=prefix + command):
+                    self.assertTrue(meets(prefix + command, "deny"))
+
     def test_no_rule_claude_code_warns_about(self):
         # File tools match only Edit(...) rules (Edit covers Write). A `:*`
         # is the old prefix syntax: anywhere but the end it warns, and at the

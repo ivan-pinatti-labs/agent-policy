@@ -11,6 +11,8 @@
 
 [[rule]]
 severity = "read"
+# Claude only: a Codex allow would run these outside Codex's sandbox.
+agents = ["claude"]
 reason = "List, render, lint and diff releases"
 prefix = [
   ["helmfile", ["list", "status", "template", "lint", "diff", "build", "show-dag",
@@ -30,10 +32,16 @@ claude = [
   "Bash(*helmfile sync*)", "Bash(*helmfile * sync*)",
   "Bash(*helmfile apply*)", "Bash(*helmfile * apply*)",
   "Bash(*helmfile *--helm-binary*)", "Bash(*helmfile *--kustomize-binary*)",
+  # Their short forms, `-b` and `-k`, with the value apart or joined.
+  "Bash(*helmfile -b*)", "Bash(*helmfile * -b*)",
+  "Bash(*helmfile -k*)", "Bash(*helmfile * -k*)",
 ]
 
 [[rule]]
 severity = "severe"
 reason = "Uninstalls every release in the helmfile: the user runs it"
 prefix = [["helmfile", ["destroy", "delete"]]]
-claude = ["Bash(*helmfile destroy*)", "Bash(*helmfile * destroy*)", "Bash(*helmfile delete*)"]
+claude = [
+  "Bash(*helmfile destroy*)", "Bash(*helmfile * destroy*)",
+  "Bash(*helmfile delete*)", "Bash(*helmfile * delete*)",
+]

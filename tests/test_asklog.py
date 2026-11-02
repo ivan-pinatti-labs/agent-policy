@@ -205,6 +205,7 @@ class FindingsNameTheirCheck(unittest.TestCase):
         self.assertEqual("redirects", self.check("echo x > /dev/tcp/h/1"))
         self.assertEqual("reader", self.check("cat ~/.ssh/id_ed25519"))
         self.assertEqual("parse", self.check("echo 'open"))
+        self.assertEqual("kubeseal", self.check("kubeseal --fetch-cert --recovery-unseal"))
 
 
 class LogTimeLimit(unittest.TestCase):

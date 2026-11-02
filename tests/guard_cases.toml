@@ -1827,3 +1827,50 @@ approve = false
 command = "AWS_PROFILE=dev-readonly kubectl get secret x | tee ~/.aws/credentials"
 expect = "deny"
 approve = false
+# Review: a write or another program behind a read the guard would allow.
+[[case]]
+command = "AWS_PROFILE=dev-readonly terraform plan -out=/tmp/plan"
+expect = "none"
+approve = false
+[[case]]
+command = "AWS_PROFILE=dev-readonly tofu plan -out /tmp/plan"
+expect = "none"
+approve = false
+[[case]]
+command = "AWS_PROFILE=dev-readonly terraform plan --out=/tmp/plan"
+expect = "none"
+approve = false
+[[case]]
+command = "AWS_PROFILE=dev-readonly terraform plan -generate-config-out=gen.tf"
+expect = "none"
+approve = false
+[[case]]
+command = "AWS_PROFILE=dev-readonly aws ec2 describe-instances --endpoint-url https://example.com"
+expect = "none"
+approve = false
+[[case]]
+command = "aws ec2 describe-instances --endpoint-url=https://example.com"
+expect = "none"
+approve = false
+[[case]]
+command = "AWS_PROFILE=dev-readonly helmfile diff -b /tmp/x"
+expect = "none"
+approve = false
+[[case]]
+command = "AWS_PROFILE=dev-readonly helmfile lint -k/tmp/x"
+expect = "none"
+approve = false
+# kubeseal unseals with the private key wherever the flag sits.
+[[case]]
+command = "kubeseal --recovery-unseal --recovery-private-key k.pem < s.yaml"
+expect = "deny"
+[[case]]
+command = "kubeseal --fetch-cert --recovery-unseal"
+expect = "deny"
+[[case]]
+command = "AWS_PROFILE=dev-readonly kubeseal --format yaml --recovery-private-key=k.pem"
+expect = "deny"
+approve = false
+[[case]]
+command = "kubeseal --fetch-cert"
+expect = "none"
