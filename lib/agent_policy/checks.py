@@ -71,6 +71,10 @@ class Finding:
     reason: str
     # Names the finding for MODE_SEVERITY; empty for one no mode changes.
     key: str = ""
+    # The check that found it (`git`, `redirects`, `reader`...), set by
+    # _check. A fixed word, never a path or a value from the line, so the ask
+    # log (lib/agent_policy/asklog.py) can record it.
+    check: str = ""
 
     @property
     def decision(self):
@@ -86,9 +90,11 @@ def for_mode(finding, mode):
     its key, or, unattended, denied where it would ask."""
     severity = MODE_SEVERITY.get(mode, {}).get(finding.key)
     if severity:
-        return Finding(severity, finding.reason, finding.key)
+        return Finding(severity, finding.reason, finding.key, finding.check)
     if mode == "unattended" and finding.decision == "ask":
-        return Finding("severe", f"{finding.reason} (unattended: nobody to ask)", finding.key)
+        return Finding(
+            "severe", f"{finding.reason} (unattended: nobody to ask)", finding.key, finding.check
+        )
     return finding
 
 
@@ -106,7 +112,9 @@ def evaluate(command, cwd, env=None, inspector=containers.inspect, mode="hardene
         segs = list(segments(command, cwd=ctx["cwd"]))
     except ParseError:
         return for_mode(
-            Finding("high", "the command line could not be parsed, so it was not checked"),
+            Finding(
+                "high", "the command line could not be parsed, so it was not checked", check="parse"
+            ),
             mode,
         )
     worst = None
@@ -326,17 +334,24 @@ READERS = {
 WRITERS = {"cp", "mv", "install", "rsync", "ln", "tee", "dd", "truncate", "sed", "yq", "jq"}
 
 
+def _tagged(check, findings):
+    """`findings`, each naming the check that found it (Finding.check)."""
+    for finding in findings:
+        finding.check = check.__name__.lstrip("_")
+        yield finding
+
+
 def _check(seg, ctx):
-    yield from _hook_bypass_env(seg)
-    yield from _redirects(seg, ctx)
+    yield from _tagged(_hook_bypass_env, _hook_bypass_env(seg))
+    yield from _tagged(_redirects, _redirects(seg, ctx))
     if seg.name in ("mount", "umount", "sshfs", "bindfs") or (
         seg.name == "rclone" and seg.words[1:2] == ["mount"]
     ):
-        yield from _mount(seg, ctx)
+        yield from _tagged(_mount, _mount(seg, ctx))
     if seg.name in READERS:
-        yield from _reader(seg, ctx)
+        yield from _tagged(_reader, _reader(seg, ctx))
     if seg.name in WRITERS:
-        yield from _writer(seg, ctx)
+        yield from _tagged(_writer, _writer(seg, ctx))
     handler = {
         "git": _git,
         "gh": _gh,
@@ -351,7 +366,7 @@ def _check(seg, ctx):
         "yq": _yq,
     }.get(seg.name)
     if handler:
-        yield from handler(seg, ctx)
+        yield from _tagged(handler, handler(seg, ctx))
 
 
 # yq's load operators read a file named inside the expression, which can be

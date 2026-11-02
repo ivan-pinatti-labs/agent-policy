@@ -98,6 +98,7 @@ make install   # backs up what it touches, then installs for both agents (sudo)
 | find local rules worth promoting, or deleting | `make harvest`              |
 | remove everything                             | `make uninstall`            |
 | list the automatic backups                    | `make backups`              |
+| count prompts and refusals (opt in log)       | `make asks`                 |
 | undo an install or uninstall                  | `make restore BACKUP=<dir>` |
 
 Then, once per machine:
@@ -205,7 +206,9 @@ allow, 745 ask and 100 deny rules in all):
 installed next to the guard. The guard reads it to allow `git -C <dir> status`
 and an aws read verb such as `aws ec2 describe-instances` itself, since a
 rule for those needs a `*` before the subcommand, which Claude Code warns
-about at every start.
+about at every start. It also carries the ask and deny rules, which the
+optional ask log reads to tell which rule a prompt came from
+([docs/OPERATIONS.md](docs/OPERATIONS.md#the-ask-log)).
 
 `dist/codex/agent-policy.rules`, the Codex prefix rules, each carrying its
 severity in the justification Codex shows:
@@ -246,6 +249,7 @@ timeout = 10
 | [bin/agent-scratch](bin/agent-scratch)                                     | The scratchpad helper ([docs/SCRATCHPAD.md](docs/SCRATCHPAD.md))              |
 | [tools/render.py](tools/render.py)                                         | Renders `policy/` into each agent's native files under `dist/`                |
 | [tools/collect.sh](tools/collect.sh), [tools/harvest.py](tools/harvest.py) | `make harvest`: compare this machine's permission files with the policy       |
+| [tools/asks.py](tools/asks.py)                                             | `make asks`: summarize the opt in ask log                                     |
 | [tests/](tests/)                                                           | Table driven cases for the guard and for Codex, plus the test image           |
 | [docs/](docs/)                                                             | Architecture, policy format, scratchpad, operations, merge pipeline           |
 
