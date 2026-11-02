@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
@@ -89,8 +90,13 @@ class Classify(unittest.TestCase):
         self.assertEqual(
             ("unmatched", "no-allow-match", ["make"]), self.classify("cd sub && make build")
         )
-        _, _, unmatched = self.classify("FOO=1 git status | ./scripts/x.sh")
-        self.assertEqual(["git", "x.sh"], unmatched)
+        # A command run by its path is `?`, never the path's last part.
+        _, _, unmatched = self.classify("FOO=1 git status | ./scripts/customer-token")
+        self.assertEqual(["git", "?"], unmatched)
+
+    def test_git_dirs_are_read_past(self):
+        decision, rule, _ = self.classify("git -C /work/other update-ref -d refs/x")
+        self.assertEqual(("ask", "10-git.toml rule 3"), (decision, rule))
 
     def test_allowed_lines_are_not_prompts(self):
         for command in ("git status", "git -C /work/other log | head -5", "cd x", "> out"):
@@ -126,6 +132,8 @@ class Records(unittest.TestCase):
         )
         self.assertEqual(["aws", "jq", "?"], commands)
         self.assertEqual(["AWS_PROFILE"], variables)
+        commands, _ = asklog.names("./customer-token run && /usr/bin/git status", "/w")
+        self.assertEqual(["?"], commands)
         self.assertEqual(([], []), asklog.names("echo 'open", "/w"))
 
     def test_entry(self):
@@ -152,6 +160,13 @@ class Records(unittest.TestCase):
             self.assertEqual(0o600, stat.S_IMODE(log.stat().st_mode))
             self.assertEqual(0o700, stat.S_IMODE(log.parent.stat().st_mode))
 
+    def test_append_after_a_line_cut_short(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "asks.jsonl"
+            log.write_text('{"a":1')
+            asklog.append(str(log), {"a": 2})
+            self.assertEqual(['{"a":1', '{"a":2}'], log.read_text().splitlines())
+
     def test_append_leaves_anything_but_a_file_alone(self):
         asklog.append(os.devnull, {"a": 1})
         with tempfile.TemporaryDirectory() as tmp:
@@ -175,6 +190,32 @@ class FindingsNameTheirCheck(unittest.TestCase):
         self.assertEqual("redirects", self.check("echo x > /dev/tcp/h/1"))
         self.assertEqual("reader", self.check("cat ~/.ssh/id_ed25519"))
         self.assertEqual("parse", self.check("echo 'open"))
+
+
+class LogTimeLimit(unittest.TestCase):
+    """A log that stalls is given up on, so the hook answers in time."""
+
+    def test_a_stalled_log_is_cut_off(self):
+        import importlib.machinery
+        import importlib.util
+        import signal
+        import time
+
+        path = ROOT / "hooks" / "guard"
+        loader = importlib.machinery.SourceFileLoader("guard_for_log_limit", str(path))
+        spec = importlib.util.spec_from_file_location(loader.name, path, loader=loader)
+        guard = importlib.util.module_from_spec(spec)
+        loader.exec_module(guard)
+        guard.LOG_SECONDS = 0.2
+        before = signal.getsignal(signal.SIGALRM)
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"HOME": tmp, asklog.ENABLE_ENV: "1", "XDG_STATE_HOME": tmp}
+            with mock.patch.dict(os.environ, env):
+                start = time.monotonic()
+                guard.log_ask(lambda: time.sleep(5))
+                self.assertLess(time.monotonic() - start, 3)
+        self.assertEqual(before, signal.getsignal(signal.SIGALRM))
+        self.assertEqual((0.0, 0.0), signal.getitimer(signal.ITIMER_REAL))
 
 
 class GuardWritesTheLog(unittest.TestCase):
@@ -307,11 +348,14 @@ class Report(unittest.TestCase):
 
     def test_main(self):
         out = io.StringIO()
-        log = io.StringIO('{"ts": "t", "source": "guard"}\n\nnot json\n[1]\n')
+        log = io.StringIO(
+            '{"ts": "t", "source": "guard", "decision": "ask"}\n\nnot json\n[1]\n{}\n'
+            '{"source": "guard"}\n'
+        )
         with contextlib.redirect_stdout(out):
             self.assertEqual(0, asks.main(["--top", "1"], stdin=log))
         self.assertIn("1 prompts or refusals", out.getvalue())
-        self.assertIn("skipped 2 lines", out.getvalue())
+        self.assertIn("skipped 4 lines", out.getvalue())
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             self.assertEqual(0, asks.main([], stdin=io.StringIO("")))

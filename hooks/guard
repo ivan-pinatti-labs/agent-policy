@@ -26,6 +26,7 @@ that cannot be written changes nothing.
 
 import json
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -92,10 +93,21 @@ def load_allowed(data):
     return [p for p in prefixes if isinstance(p, list) and p and all(isinstance(w, str) for w in p)]
 
 
+# How long the ask log may take, well inside the hook's 10 second timeout.
+LOG_SECONDS = 2
+
+
+def _stalled(_signum, _frame):
+    raise TimeoutError("the ask log took too long")
+
+
 def log_ask(record):
     """Append `record()` to the ask log (lib/agent_policy/asklog.py) when the
-    log is on and `record()` is not None. Never raises: the log must not
-    change a decision or stop the guard answering."""
+    log is on and `record()` is not None. Called only once the answer is
+    written. Never raises and never takes longer than LOG_SECONDS: the log
+    must not change a decision or keep the hook past its timeout."""
+    previous = signal.signal(signal.SIGALRM, _stalled)
+    signal.setitimer(signal.ITIMER_REAL, LOG_SECONDS)
     try:
         log = asklog.path()
         line = record() if log else None
@@ -104,6 +116,9 @@ def log_ask(record):
     except Exception:
         # The log is best effort: whatever went wrong, the answer stands.
         return
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def unchecked(agent, mode, command="", cwd=""):
@@ -178,7 +193,6 @@ def main(argv):
         if allowed:
             log_ask(left_to_rules(agent, mode, command, cwd, data))
         return 0
-    log_ask(found(agent, mode, command, cwd, finding))
     one_line = " ".join(command.split())
     tag = f"agent-policy, {finding.severity}"
     if finding.decision == "deny":
@@ -195,6 +209,7 @@ def main(argv):
         )
     else:
         respond("ask", f"{tag}: {finding.reason}")
+    log_ask(found(agent, mode, command, cwd, finding))
     return 0
 
 

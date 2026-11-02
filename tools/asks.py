@@ -26,7 +26,8 @@ def read(lines):
         except ValueError:
             skipped += 1
             continue
-        if isinstance(record, dict):
+        # The guard writes both on every line; anything else is not its.
+        if isinstance(record, dict) and "source" in record and "decision" in record:
             records.append(record)
         else:
             skipped += 1

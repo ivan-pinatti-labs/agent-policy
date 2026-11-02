@@ -122,8 +122,10 @@ mkdir -p ~/.config/agent-policy && touch ~/.config/agent-policy/ask-log
 export AGENT_POLICY_ASK_LOG=1   # in the environment the agent starts from
 ```
 
-The file works for every session on the machine, whatever environment the
-agent was started from; delete it to turn the log off again. The guard then
+The file works for every session on the machine; delete it to turn the log
+off again. It is `$XDG_CONFIG_HOME/agent-policy/ask-log` when the agent's
+environment sets `XDG_CONFIG_HOME`, as for `protected-paths`, and the
+`~/.config` one is then not read. The guard then
 appends one JSON line per prompt or refusal it can see to
 `~/.local/state/agent-policy/asks.jsonl` (`$XDG_STATE_HOME` moves it), next
 to the backups. The file is created readable by you alone.
@@ -146,8 +148,10 @@ to the backups. The file is created readable by you alone.
 | `unmatched` | the commands no allow rule matched (`unmatched` only)                                                      |
 
 Only names are written: never an argument, a value, a path, or the command
-line itself, so a secret on the line cannot reach the file. A name that is
-not a plain word (a computed `$X`, an odd path) is written as `?`.
+line itself, so a secret on the line cannot reach the file. A command run by
+its path (`./scripts/deploy`, `/usr/bin/git`) is written as `?`, never the
+path's last part, and so is any name that is not a plain word (a computed
+`$X`).
 
 What the guard can tell:
 

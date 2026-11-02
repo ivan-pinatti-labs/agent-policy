@@ -93,6 +93,18 @@ def _name(word):
     return word if NAME.fullmatch(word) else "?"
 
 
+def _command(seg):
+    """The command's name as written. A path (`./scripts/deploy`) is `?`,
+    never its last part, which can name something private."""
+    return _name(seg.words[0])
+
+
+def _words(seg):
+    """The command's words, past `git -C <dir>`, as the static prefixes see
+    them."""
+    return checks._without_git_dirs(seg.words)[0] if seg.name == "git" else seg.words
+
+
 def classify(command, cwd, home, prefixes, static):
     """What the rendered Claude Code rules make of a line the guard was
     silent on: (decision, rule, unmatched names), or None when they allow
@@ -108,7 +120,7 @@ def classify(command, cwd, home, prefixes, static):
     best = None
     for entry in static:
         if "prefix" in entry:
-            hit = any(seg.words[: len(entry["prefix"])] == entry["prefix"] for seg in segs)
+            hit = any(_words(seg)[: len(entry["prefix"])] == entry["prefix"] for seg in segs)
         else:
             regex = _glob(entry["pattern"])
             hit = any(regex.fullmatch(text) for text in texts)
@@ -118,9 +130,9 @@ def classify(command, cwd, home, prefixes, static):
         return best["decision"], best["rule"], []
     allowed = {tuple(p) for p in prefixes}
     unmatched = [
-        _name(seg.name)
+        _command(seg)
         for seg in segs
-        if seg.name not in BUILTIN and checks._approval(seg, allowed, cwd, home) is None
+        if seg.words[0] not in BUILTIN and checks._approval(seg, allowed, cwd, home) is None
     ]
     if unmatched:
         return "unmatched", "no-allow-match", unmatched
@@ -134,7 +146,7 @@ def names(command, cwd):
         segs = [seg for seg in segments(command, cwd=cwd) if seg.words]
     except ParseError:
         return [], []
-    commands = list(dict.fromkeys(_name(seg.name) for seg in segs))
+    commands = list(dict.fromkeys(_command(seg) for seg in segs))
     variables = [k if ENV_NAME.fullmatch(k) else "?" for seg in segs for k in seg.env]
     return commands, list(dict.fromkeys(variables))
 
@@ -165,11 +177,18 @@ def append(log, record):
     folder) private to the user. A link or anything but a regular file at
     that path is left alone, and the open never blocks on a FIFO."""
     os.makedirs(os.path.dirname(log), mode=0o700, exist_ok=True)
-    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK
+    flags = os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK
     fd = os.open(log, flags, 0o600)
     try:
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
             return
-        os.write(fd, (json.dumps(record, separators=(",", ":")) + "\n").encode())
+        data = (json.dumps(record, separators=(",", ":")) + "\n").encode()
+        # A write cut short earlier left a line unfinished: end it, so this
+        # record starts a line of its own and only the broken one is lost.
+        if info.st_size and os.pread(fd, 1, info.st_size - 1) != b"\n":
+            data = b"\n" + data
+        while data:
+            data = data[os.write(fd, data) :]
     finally:
         os.close(fd)
