@@ -430,6 +430,9 @@ YQ_LOAD = re.compile(r"\b(?:load(?:_[a-z0-9]+)?|eval)\s*\(")
 
 # kubeseal's flags come in any order, so a prefix rule sees these only first.
 KUBESEAL_UNSEAL = ("--recovery-unseal", "--recovery-private-key")
+# Glob and brace characters, which the shell expands before kubeseal runs.
+# A quoted word holding one asks too: the guard reads words without quotes.
+KUBESEAL_GLOB = "*?[{"
 
 
 def _kubeseal(seg, ctx):
@@ -437,8 +440,10 @@ def _kubeseal(seg, ctx):
         yield Finding(
             "critical", "kubeseal decrypts sealed secrets with the controller's private key"
         )
-    elif any(_unresolved(w) for w in seg.words[1:]):
-        # A word the shell expands (`$FLAGS`) could be either flag.
+    elif any(_unresolved(w) or any(c in w for c in KUBESEAL_GLOB) for w in seg.words[1:]):
+        # A word the shell expands (`$FLAGS`, a glob such as `--recovery-*`
+        # matching a file of that name, a brace such as `--recovery-{unseal,x}`)
+        # could be either flag.
         yield Finding(
             "moderate", "kubeseal takes an argument this guard cannot read, which may unseal"
         )

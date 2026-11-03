@@ -1885,3 +1885,17 @@ approve = false
 [[case]]
 command = "FLAGS=--recovery-unseal; kubeseal --fetch-cert $FLAGS"
 expect = "deny"
+# A glob or a brace in a kubeseal argument can expand to a recovery flag.
+[[case]]
+command = "AWS_PROFILE=dev-readonly kubeseal --fetch-cert --recovery-*"
+expect = "ask"
+approve = false
+[[case]]
+command = "kubeseal --fetch-cert --recovery-unseal?"
+expect = "ask"
+[[case]]
+command = "kubeseal --fetch-cert --recovery-unseal[0]"
+expect = "ask"
+[[case]]
+command = "kubeseal --fetch-cert --recovery-{unseal,x}"
+expect = "ask"
