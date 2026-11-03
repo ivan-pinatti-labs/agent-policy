@@ -22,7 +22,7 @@ import re
 from dataclasses import dataclass
 
 from . import containers
-from .shell import ParseError, segments
+from .shell import ParseError, segments, strip_heredoc_bodies
 
 # severity -> (decision, rank). Higher rank wins when several fire. Kept in
 # step with tools/render.py's SEVERITY map and docs/POLICY.md.
@@ -37,19 +37,34 @@ SEVERITY = {
 HOOK_BYPASS_ENV = {"HUSKY": "0", "PRE_COMMIT_ALLOW_NO_CONFIG": None, "SKIP": None}
 
 # Modes (docs/POLICY.md, "Modes"). hardened is the policy as written.
-# assisted has the user present and asks less about reads. unattended has
-# nobody to answer a prompt, so whatever would ask is denied there, except
-# the findings named below, which it allows. A finding is named by its key;
-# the same table for the static rules is each rule's `modes` (tools/render.py).
-# Both modes assume the environment docs/POLICY.md describes around the agent
-# (a broker that limits GitHub writes, an installed sandbox, no credentials).
-MODES = ("hardened", "assisted", "unattended")
+# assisted has the user present and asks less about reads. permissive has the
+# user present too, and leaves what the guard cannot judge to Claude Code's
+# auto mode classifier: a finding it names is no opinion, so the static rules
+# and then the classifier decide. unattended has nobody to answer a prompt, so
+# whatever would ask is denied there, except the findings named below, which
+# it allows. A finding is named by its key; the same table for the static
+# rules is each rule's `modes` (tools/render.py). Every mode but hardened
+# assumes the environment docs/POLICY.md describes around the agent (a broker
+# that limits GitHub writes, an installed sandbox, no credentials), and the
+# guard refuses permissive outside one (hooks/guard, held_mode()).
+MODES = ("hardened", "assisted", "permissive", "unattended")
 MODE_SEVERITY = {
     "assisted": {
         # A read of a path the guard cannot resolve: the agent's environment
         # holds no credentials of its own, and the sandbox denies the paths
         # that hold them.
         "unresolved-read": "low",
+    },
+    "permissive": {
+        # What the guard raises only because it cannot judge the line: a path
+        # it cannot resolve (the sandbox confines writes and denies credential
+        # reads), a line or a part of one it cannot read, and a yq expression
+        # that names its own file. Nothing here is a judgment, so each is left
+        # to the classifier; every finding that is one keeps its decision.
+        "unresolved-read": "low",
+        "unresolved-write": "low",
+        "parse": "low",
+        "yq-load": "low",
     },
     "unattended": {
         "unresolved-read": "low",
@@ -108,15 +123,19 @@ def evaluate(command, cwd, env=None, inspector=containers.inspect, mode="hardene
         "inspect": inspector,
         "protected": containers.protected_paths(env),
     }
+    unparsed = Finding(
+        "high", "the command line could not be parsed, so it was not checked", "parse", "parse"
+    )
+    # A mode that leaves an unreadable line to the classifier still checks
+    # every part of it the guard can read, so a deny written beside a part it
+    # cannot read stays a deny.
+    partial = for_mode(unparsed, mode).decision == "allow"
     try:
-        segs = list(segments(command, cwd=ctx["cwd"]))
+        segs = list(segments(command, cwd=ctx["cwd"], partial=partial))
     except ParseError:
-        return for_mode(
-            Finding(
-                "high", "the command line could not be parsed, so it was not checked", check="parse"
-            ),
-            mode,
-        )
+        if not partial:
+            return for_mode(unparsed, mode)
+        segs = _by_line(command, ctx["cwd"])
     worst = None
     for seg in segs:
         for finding in _check(seg, ctx):
@@ -127,6 +146,19 @@ def evaluate(command, cwd, env=None, inspector=containers.inspect, mode="hardene
             if worst is None or finding.rank > worst.rank:
                 worst = finding
     return worst
+
+
+def _by_line(command, cwd):
+    """The segments of every line of `command` that can be read on its own,
+    for a line that cannot be read whole. The shell runs each line before it
+    reads the next, so a line before an unbalanced quote still runs."""
+    segs = []
+    for line in strip_heredoc_bodies(command).split("\n"):
+        try:
+            segs.extend(segments(line, cwd=cwd, partial=True))
+        except ParseError:
+            continue
+    return segs
 
 
 # Variables a command may set and still be approved: each only picks which
@@ -384,6 +416,7 @@ def _yq(seg, ctx):
             "high",
             "yq loads a file named inside its expression, which this guard cannot judge;"
             " add --security-disable-file-ops, or read the file with yq directly",
+            "yq-load",
         )
 
 

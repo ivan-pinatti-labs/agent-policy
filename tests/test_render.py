@@ -247,7 +247,7 @@ class RenderModes(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp()
         cls.out = {}
-        for mode in ("default", "hardened", "assisted", "unattended"):
+        for mode in ("default", "hardened", "assisted", "permissive", "unattended"):
             out = Path(cls.tmp) / mode
             args = ["--out", str(out)] + ([] if mode == "default" else ["--mode", mode])
             assert render.main(args) == 0
@@ -273,7 +273,7 @@ class RenderModes(unittest.TestCase):
             )
 
     def test_each_mode_tells_the_guard(self):
-        for mode in ("assisted", "unattended"):
+        for mode in ("assisted", "permissive", "unattended"):
             command = self.drop_in(mode)["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
             self.assertIn(f"--agent claude --mode {mode} --allow", command)
         command = self.drop_in("hardened")["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
@@ -283,6 +283,27 @@ class RenderModes(unittest.TestCase):
         self.assertEqual(
             self.drop_in("hardened")["permissions"], self.drop_in("assisted")["permissions"]
         )
+
+    def test_permissive_changes_no_static_rule(self):
+        # What permissive leaves to the classifier is the guard's to give up
+        # (lib/agent_policy/checks.py, MODE_SEVERITY); a static rule that asks
+        # still asks, and what no rule names already falls to the classifier.
+        self.assertEqual(
+            self.drop_in("hardened")["permissions"], self.drop_in("permissive")["permissions"]
+        )
+        self.assertEqual(
+            (self.out["hardened"] / "claude" / "guard-allow.json").read_text(),
+            (self.out["permissive"] / "claude" / "guard-allow.json").read_text(),
+        )
+
+    def test_permissive_leaves_codex_hardened(self):
+        # Codex has no classifier to leave a line to.
+        for name in ("codex/agent-policy.rules", "codex/requirements.toml"):
+            self.assertEqual(
+                (self.out["hardened"] / name).read_text(),
+                (self.out["permissive"] / name).read_text(),
+                name,
+            )
 
     def test_unattended_asks_nothing(self):
         perms = self.drop_in("unattended")["permissions"]
@@ -322,6 +343,10 @@ class RenderModes(unittest.TestCase):
         rule = {"severity": "high"}
         self.assertEqual("high", render.severity_in(rule, "hardened"))
         self.assertEqual("high", render.severity_in(rule, "assisted"))
+        self.assertEqual("high", render.severity_in(rule, "permissive"))
+        self.assertEqual(
+            "low", render.severity_in(dict(rule, modes={"permissive": "low"}), "permissive")
+        )
         self.assertEqual("severe", render.severity_in(rule, "unattended"))
         self.assertEqual(
             "low", render.severity_in(dict(rule, modes={"unattended": "low"}), "unattended")

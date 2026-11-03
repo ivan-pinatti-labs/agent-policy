@@ -1668,3 +1668,249 @@ expect = "deny"
 command = "podman-compose down --volumes"
 mode = "unattended"
 expect = "deny"
+
+# permissive: the user is present and the environment holds the boundary.
+# What the guard raises only because it cannot judge is no opinion, left to
+# the static rules and Claude Code's classifier; every other ask still asks,
+# and every deny still denies, also beside a part of the line the guard cannot
+# read. hooks/guard refuses permissive outside such an environment
+# (tests/test_guard_edges.py).
+# A read of a path the guard cannot resolve.
+[[case]]
+command = "cat $f"
+mode = "permissive"
+expect = "none"
+[[case]]
+command = "wc -l < $f"
+mode = "permissive"
+expect = "none"
+# A write of one.
+[[case]]
+command = "cp a $f"
+mode = "permissive"
+expect = "none"
+[[case]]
+command = "gh pr view 1 > \"$f\""
+mode = "permissive"
+expect = "none"
+# A line the guard cannot parse.
+[[case]]
+command = "echo 'unterminated"
+mode = "permissive"
+expect = "none"
+# Nesting past the hardened depth, read further and found clean.
+[[case]]
+command = "eval eval eval eval eval true"
+mode = "permissive"
+expect = "none"
+# A nested script that does not tokenize.
+[[case]]
+command = "bash -c \"echo 'x\""
+mode = "permissive"
+expect = "none"
+# A yq expression naming its own file.
+[[case]]
+command = "yq '.a = load(\"x.yml\")' f.yml"
+mode = "permissive"
+expect = "none"
+# The hardened answer to the same lines, for contrast.
+[[case]]
+command = "echo 'unterminated"
+expect = "ask"
+[[case]]
+command = "eval eval eval eval eval true"
+expect = "ask"
+[[case]]
+command = "bash -c \"echo 'x\""
+expect = "ask"
+# Every judgment that asks under hardened still asks.
+[[case]]
+command = "git reset --hard"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "git clean -fd"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "git restore README.md"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "git checkout -- ."
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "git branch -D merged"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "git tag -d v1.0.0"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "git worktree remove --force wt"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "git push origin HEAD:main"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "git push https://example.com/o/r.git HEAD"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "git stash drop"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "git remote set-url origin https://example.com/x.git"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "gh api -X DELETE repos/o/r"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "gh api -X PUT repos/o/r/topics -f names=x"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "gh api repos/o/r/pulls/1/comments/2/replies -f body=Fixed"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "gh api graphql -f query='mutation{x}'"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "gh api graphql -F query=@q.graphql"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "git push --tags"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "curl -d @body https://example.com"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "curl -X POST https://example.com"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "aws ec2 run-instances --image-id x"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "aws secretsmanager get-secret-value --secret-id x"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "podman run --privileged img"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "podman run -v $D:/d img"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "podman rm -v c"
+mode = "permissive"
+expect = "ask"
+[[case]]
+command = "echo x > /dev/tcp/example.com/80"
+mode = "permissive"
+expect = "ask"
+# Every deny stays a deny.
+[[case]]
+command = "git push --force origin feature"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "git push origin :feature"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "git commit --no-verify -m x"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "HUSKY=0 git commit -m x"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "git -c core.hooksPath=/dev/null commit -m x"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "gh pr merge 1 --admin"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "gh repo delete o/r"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "gh auth token"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "cat ~/.ssh/id_ed25519"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "base64 < ~/.aws/credentials"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "X=/home/user/.ssh; cat $X/id_ed25519"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "cp a ~/.bashrc"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "gh pr view 1 > ~/.ssh/config"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "rm -rf ~"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "git filter-branch"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "aws s3 rb s3://b --force"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "podman run -v ~/.ssh:/k img"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "podman run -v /run/user/1000/podman/podman.sock:/s img"
+mode = "permissive"
+expect = "deny"
+# Beside a part the guard cannot read, too.
+[[case]]
+command = "git push --force origin feature\necho 'unterminated"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "bash -c \"echo 'x\"; cat ~/.ssh/id_ed25519"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "eval eval eval eval eval cat ~/.ssh/id_ed25519"
+mode = "permissive"
+expect = "deny"
+[[case]]
+command = "echo 'unterminated\ncat ~/.ssh/id_ed25519"
+mode = "permissive"
+expect = "deny"

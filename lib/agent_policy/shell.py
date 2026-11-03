@@ -84,6 +84,12 @@ ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 
 
+# How deep segments() reads substitutions, eval and `bash -c` inside each
+# other: DEPTH by default, PARTIAL_DEPTH when it may skip what it cannot read.
+DEPTH = 4
+PARTIAL_DEPTH = 16
+
+
 class ParseError(ValueError):
     """The command line could not be tokenized (unbalanced quotes and the like)."""
 
@@ -231,16 +237,30 @@ def _split_redirects(tokens):
     return words, redirects
 
 
-def segments(command, cwd=None, _depth=0, _known=None):
+def segments(command, cwd=None, _depth=0, _known=None, partial=False):
     """Yield a Segment for every simple command the line would run, with the
     variables the line itself certainly sets substituted where it uses them
-    (see Variables), and `$PWD` as `cwd` when it is given."""
-    if _depth > 4:
+    (see Variables), and `$PWD` as `cwd` when it is given.
+
+    A line that cannot be read raises ParseError. With `partial`, a part of
+    it that cannot be read is skipped instead and the rest still yielded:
+    a nested script that does not tokenize, and nesting past PARTIAL_DEPTH,
+    which reads deeper than DEPTH but stops well inside the hook's timeout.
+    Only the top level of the line has to tokenize."""
+    if _depth > (PARTIAL_DEPTH if partial else DEPTH):
+        if partial:
+            return
         # Deeper nesting is not read, so it cannot pass as checked.
         raise ParseError("command substitution or eval nested too deep to check")
     text = strip_heredoc_bodies(command)
+    try:
+        tokens = _tokens(text)
+    except ParseError:
+        if partial and _depth:
+            return
+        raise
     raw, current = [], []
-    for token in [*_tokens(text), None]:
+    for token in [*tokens, None]:
         if token is None or (token and set(token) <= OPERATOR_CHARS):
             raw.append((current, token))
             current = []
@@ -252,7 +272,7 @@ def segments(command, cwd=None, _depth=0, _known=None):
     # the variables set before anything else on it, and $PWD.
     prologue = variables.prologue() if variables else _known
     for inner in _substitutions(text):
-        yield from segments(inner, _depth=_depth + 1, _known=prologue)
+        yield from segments(inner, _depth=_depth + 1, _known=prologue, partial=partial)
     for i, (tokens, _) in enumerate(raw):
         if not tokens:
             continue
@@ -271,7 +291,7 @@ def segments(command, cwd=None, _depth=0, _known=None):
             yield seg
             nested = _nested_script(seg)
             if nested is not None:
-                yield from segments(nested, _depth=_depth + 1)
+                yield from segments(nested, _depth=_depth + 1, partial=partial)
 
 
 def _nested_script(seg):

@@ -115,11 +115,14 @@ its own sandbox unless an allow rule lifts it out.
   rules use `~`, and the guard's path is the install prefix
   (`/usr/local/libexec/agent-policy` by default).
 - **Modes:** `make install` renders `hardened`, the policy as written.
-  `tools/render.py --mode assisted|unattended` renders another mode
-  ([POLICY.md](POLICY.md#modes)): the static rules with each severity as
-  that mode sees it, and a hook line that passes `--mode` to the guard. An
-  environment that picks the mode per session, such as devcontainer-airlock,
-  renders each one and installs the drop-in it needs.
+  `tools/render.py --mode assisted|permissive|unattended` renders another
+  mode ([POLICY.md](POLICY.md#modes)): the static rules with each severity
+  as that mode sees it, and a hook line that passes `--mode` to the guard.
+  An environment that picks the mode per session, such as
+  devcontainer-airlock, renders each one and installs the drop-in it needs.
+  The guard takes `--mode permissive` only when that environment declares
+  it (`AIRLOCK_LEVEL=permissive`, inside a container), and runs hardened
+  otherwise; Codex's files are never rendered permissive.
 
 ## How Codex receives it
 
