@@ -115,7 +115,11 @@ One file per tool, numbered so related tools sit together:
 | `42-terraform.toml`  | Terraform                                      |
 | `43-opentofu.toml`   | OpenTofu                                       |
 | `44-atmos.toml`      | Atmos                                          |
-| `45-aws.toml`        | AWS CLI, eksctl                                |
+| `45-aws.toml`        | AWS CLI                                        |
+| `46-eksctl.toml`     | eksctl                                         |
+| `47-helmfile.toml`   | helmfile                                       |
+| `48-kubeseal.toml`   | kubeseal (Sealed Secrets)                      |
+| `49-pluto.toml`      | pluto                                          |
 | `50-ansible.toml`    | Ansible                                        |
 | `55-asdf.toml`       | asdf                                           |
 | `60-mounts.toml`     | mount, umount, FUSE mounts, namespaces         |
@@ -138,8 +142,32 @@ A new tool gets its own file.
   - Docker, usually rootful, asks before it runs anything;
   - `system reset` is handed off.
 - **Cloud and infrastructure:** reading is allowed. Changes ask (`apply`,
-  `import`, state surgery, `kubectl apply/delete/exec`, `helm upgrade`, AWS
-  write verbs, reading a secret value). Destroying is handed off.
+  `import`, state surgery, `kubectl apply/delete/exec`, `helm upgrade`,
+  `helmfile sync/apply`, `eksctl create/upgrade`, AWS write verbs, reading
+  a secret value, sealing a secret from a file or re-encrypting one;
+  sealing from standard input is unlisted, so it prompts). Destroying is
+  handed off (`terraform destroy`, `eksctl delete cluster`, `helmfile
+  destroy`), and so is unsealing with the Sealed Secrets private key, which
+  the guard refuses wherever the flag sits. The reads of eksctl, helmfile,
+  kubeseal and pluto are Claude only, like the base read rules.
+  - A read with `AWS_PROFILE`, `AWS_REGION` or `AWS_DEFAULT_REGION` set in
+    front (`AWS_PROFILE=x kubectl get pods`) is allowed by the guard, for
+    aws, atmos, terraform, tofu, kubectl, helm, eksctl, helmfile, kubeseal
+    and pluto: a static rule cannot match a command with a variable in
+    front. No other variable is: `KUBECONFIG` names a file whose exec plugin
+    runs a program of its choosing, `ATMOS_IDENTITY=false` switches atmos
+    to whatever credentials the AWS SDK finds around it, and `TF_*` passes
+    options and plugin folders no prefix rule sees. A line with
+    `--kubeconfig`, `--helm-binary`, `--kustomize-binary` (helmfile's `-b`
+    and `-k` too) or `--post-renderer` is left to the static rules for the
+    same reason, and so is one that writes a file the guard does not judge
+    (`-out`, `-generate-config-out`) or changes whom an aws read trusts
+    (`--no-verify-ssl`, `--ca-bundle`, `--endpoint-url`).
+  - helmfile with another helm or kustomize binary (`--helm-binary`, `-b`,
+    `--kustomize-binary`, `-k`) asks at `high`, the scale's level for
+    running code: it runs the program the prompt names, as `kubectl exec`
+    or `helm install` with its hooks would, and nothing about it is
+    irreversible or a credential. It is never approved by the guard.
 - **HTTP:** Claude may fetch, and the guard asks before a request with a
   body or a write method. Codex keeps its own approval for `curl`.
 - **Credentials and code-on-disk (guard only):** reading a credential file

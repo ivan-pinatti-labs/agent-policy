@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# helmfile. Rendering, linting and diffing against the cluster is free
+# (`helmfile diff` only reads the cluster, through the helm-diff plugin);
+# fetching charts and updating the lock file is local; syncing or applying
+# releases asks; destroying every release in the file is handed to the
+# user. A helmfile runs the commands its own templates and hooks name, as a
+# Terraform plan runs its providers, so reading one is trusted as far as
+# the repository it comes from. The globs start with `*` so that
+# `AWS_PROFILE=x helmfile ...` matches too.
+
+[[rule]]
+severity = "read"
+# Claude only: a Codex allow would run these outside Codex's sandbox.
+agents = ["claude"]
+reason = "List, render, lint and diff releases"
+prefix = [
+  ["helmfile", ["list", "status", "template", "lint", "diff", "build", "show-dag",
+                "version"]],
+]
+
+[[rule]]
+severity = "low"
+reason = "Fetches charts and updates the lock file, locally"
+prefix = [["helmfile", ["deps", "fetch"]]]
+
+[[rule]]
+severity = "high"
+reason = "Changes releases or the chart repositories, or runs another binary"
+prefix = [["helmfile", ["sync", "apply", "test", "repos", "init"]]]
+claude = [
+  "Bash(*helmfile sync*)", "Bash(*helmfile * sync*)",
+  "Bash(*helmfile apply*)", "Bash(*helmfile * apply*)",
+  "Bash(*helmfile *--helm-binary*)", "Bash(*helmfile *--kustomize-binary*)",
+  # Their short forms, `-b` and `-k`, with the value apart or joined.
+  "Bash(*helmfile -b*)", "Bash(*helmfile * -b*)",
+  "Bash(*helmfile -k*)", "Bash(*helmfile * -k*)",
+]
+
+[[rule]]
+severity = "severe"
+reason = "Uninstalls every release in the helmfile: the user runs it"
+prefix = [["helmfile", ["destroy", "delete"]]]
+claude = [
+  "Bash(*helmfile destroy*)", "Bash(*helmfile * destroy*)",
+  "Bash(*helmfile delete*)", "Bash(*helmfile * delete*)",
+]

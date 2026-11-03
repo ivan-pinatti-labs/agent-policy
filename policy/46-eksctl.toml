@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# eksctl (Amazon EKS). Reading clusters, node groups and add-ons is free;
+# creating, changing or deleting them asks; deleting a whole cluster is
+# handed to the user. Cluster names and AWS profiles are machine specific
+# and stay in the project's own settings. The globs start with `*` so that
+# `AWS_PROFILE=x eksctl ...` matches too. Most eksctl utils commands that
+# change a cluster only print a plan without --approve; they ask either way.
+
+[[rule]]
+severity = "read"
+# Claude only: a Codex allow would run these outside Codex's sandbox.
+agents = ["claude"]
+reason = "Read EKS clusters, node groups and add-ons"
+prefix = [
+  ["eksctl", ["get", "info", "version"]],
+  ["eksctl", "utils", ["describe-stacks", "describe-addon-versions",
+                        "describe-addon-configuration", "nodegroup-health", "schema"]],
+]
+
+[[rule]]
+severity = "high"
+reason = "Creates, changes or deletes EKS resources, or rewrites the kubeconfig"
+prefix = [
+  ["eksctl", ["create", "delete", "upgrade", "update", "scale", "drain", "set", "unset",
+              "enable", "register", "deregister"]],
+  ["eksctl", "utils", ["associate-iam-oidc-provider", "enable-secrets-encryption",
+                        "install-vpc-controllers", "migrate-to-access-entry",
+                        "migrate-to-pod-identity", "set-public-access-cidrs",
+                        "update-authentication-mode", "update-aws-node",
+                        "update-cluster-endpoints", "update-cluster-logging",
+                        "update-cluster-vpc-config", "update-coredns", "update-kube-proxy",
+                        "update-legacy-subnet-settings", "update-zonal-shift-config",
+                        "write-kubeconfig"]],
+]
+claude = [
+  "Bash(*eksctl create *)", "Bash(*eksctl delete *)", "Bash(*eksctl upgrade *)",
+  "Bash(*eksctl scale *)", "Bash(*eksctl drain *)",
+]
+
+[[rule]]
+severity = "severe"
+reason = "Deletes a whole EKS cluster: the user runs it"
+prefix = [["eksctl", "delete", "cluster"]]
+# The second pattern matches options before `delete` (`eksctl -v 4 delete
+# cluster`), which the prefix cannot.
+# The third, options between the two (`eksctl delete --region r cluster`).
+# It also refuses a node group delete whose cluster name is a separate word
+# starting with `cluster`; refusing too much is the safe side here.
+claude = [
+  "Bash(*eksctl delete cluster*)", "Bash(*eksctl * delete cluster*)",
+  "Bash(*eksctl delete * cluster*)",
+]
