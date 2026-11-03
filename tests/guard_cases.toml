@@ -1874,3 +1874,14 @@ approve = false
 [[case]]
 command = "kubeseal --fetch-cert"
 expect = "none"
+# A kubeseal argument the shell expands could be a recovery flag: ask.
+[[case]]
+command = "kubeseal --fetch-cert $RECOVERY_FLAGS"
+expect = "ask"
+[[case]]
+command = "AWS_PROFILE=dev-readonly kubeseal --fetch-cert \"$(cat flags)\""
+expect = "ask"
+approve = false
+[[case]]
+command = "FLAGS=--recovery-unseal; kubeseal --fetch-cert $FLAGS"
+expect = "deny"

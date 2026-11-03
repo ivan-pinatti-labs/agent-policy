@@ -58,6 +58,7 @@ class Render(unittest.TestCase):
             self.assertIn(f"Bash({rule})", perms["ask"])
         for rule in (
             "*eksctl delete cluster*",
+            "*eksctl delete * cluster*",
             "*helmfile destroy*",
             "*kubeseal*--recovery-unseal*",
         ):
@@ -87,6 +88,7 @@ class Render(unittest.TestCase):
                 "helmfile -e prod delete",
                 "eksctl delete cluster --name c",
                 "eksctl -v 4 delete cluster --name c",
+                "eksctl delete --region=us-east-1 cluster",
             ):
                 with self.subTest(command=prefix + command):
                     self.assertTrue(meets(prefix + command, "deny"))

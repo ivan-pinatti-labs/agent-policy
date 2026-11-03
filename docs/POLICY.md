@@ -163,6 +163,11 @@ A new tool gets its own file.
     same reason, and so is one that writes a file the guard does not judge
     (`-out`, `-generate-config-out`) or changes whom an aws read trusts
     (`--no-verify-ssl`, `--ca-bundle`, `--endpoint-url`).
+  - helmfile with another helm or kustomize binary (`--helm-binary`, `-b`,
+    `--kustomize-binary`, `-k`) asks at `high`, the scale's level for
+    running code: it runs the program the prompt names, as `kubectl exec`
+    or `helm install` with its hooks would, and nothing about it is
+    irreversible or a credential. It is never approved by the guard.
 - **HTTP:** Claude may fetch, and the guard asks before a request with a
   body or a write method. Codex keeps its own approval for `curl`.
 - **Credentials and code-on-disk (guard only):** reading a credential file

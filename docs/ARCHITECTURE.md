@@ -172,7 +172,8 @@ So the renderer leaves those out, and the guard allows the command itself
 - no command is wrapped (`sudo`, `env`, `xargs`...), sets a variable other
   than `AWS_PROFILE`, `AWS_REGION` or `AWS_DEFAULT_REGION` in front of aws,
   atmos, terraform, tofu, kubectl, helm, eksctl, helmfile, kubeseal or pluto
-  (`APPROVE_ENV`), or redirects anywhere but `/dev/null`; no command with a
+  (`APPROVE_ENV`), or redirects anywhere but `/dev/null`, `/dev/stdout` or
+  `/dev/stderr`; no command with a
   variable in front carries an option that runs another program, swaps the
   kubeconfig, writes a file or changes whom an aws read trusts
   (`--kubeconfig`, `--helm-binary`, `--post-renderer`, `-out`,

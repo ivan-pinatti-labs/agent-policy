@@ -44,4 +44,10 @@ reason = "Deletes a whole EKS cluster: the user runs it"
 prefix = [["eksctl", "delete", "cluster"]]
 # The second pattern matches options before `delete` (`eksctl -v 4 delete
 # cluster`), which the prefix cannot.
-claude = ["Bash(*eksctl delete cluster*)", "Bash(*eksctl * delete cluster*)"]
+# The third, options between the two (`eksctl delete --region r cluster`).
+# It also refuses a node group delete whose cluster name is a separate word
+# starting with `cluster`; refusing too much is the safe side here.
+claude = [
+  "Bash(*eksctl delete cluster*)", "Bash(*eksctl * delete cluster*)",
+  "Bash(*eksctl delete * cluster*)",
+]

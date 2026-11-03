@@ -437,6 +437,11 @@ def _kubeseal(seg, ctx):
         yield Finding(
             "critical", "kubeseal decrypts sealed secrets with the controller's private key"
         )
+    elif any(_unresolved(w) for w in seg.words[1:]):
+        # A word the shell expands (`$FLAGS`) could be either flag.
+        yield Finding(
+            "moderate", "kubeseal takes an argument this guard cannot read, which may unseal"
+        )
 
 
 def _yq(seg, ctx):
