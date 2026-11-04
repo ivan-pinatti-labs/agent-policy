@@ -38,35 +38,38 @@ SEVERITY = {
 }
 HOOK_BYPASS_ENV = {"HUSKY": "0", "PRE_COMMIT_ALLOW_NO_CONFIG": None, "SKIP": None}
 
-# Modes (docs/POLICY.md, "Modes"). hardened is the policy as written.
-# assisted has the user present and asks less about reads. permissive has the
-# user present too, and leaves what the guard cannot judge to Claude Code's
-# auto mode classifier: a finding it names is no opinion, so the static rules
-# and then the classifier decide. unattended has nobody to answer a prompt, so
-# whatever would ask is denied there, except the findings named below, which
-# it allows. A finding is named by its key; the same table for the static
-# rules is each rule's `modes` (tools/render.py). Every mode but hardened
-# assumes the environment docs/POLICY.md describes around the agent (a broker
-# that limits GitHub writes, an installed sandbox, no credentials), and the
-# guard refuses permissive outside one (hooks/guard, held_mode()).
-MODES = ("hardened", "assisted", "permissive", "unattended")
+# Modes (docs/POLICY.md, "Modes"), named for who is there. hardened is the
+# policy as written. supervised has the user driving, and asks only for what
+# needs a judgment: what the guard cannot judge, and an AWS write, are no
+# opinion, so the static rules and then Claude Code's auto mode classifier
+# decide; the review flow's GitHub writes are allowed, as the gh broker limits
+# them. unattended has nobody to answer a prompt, so whatever would ask is
+# denied there, except the findings named below, which it allows. A finding is
+# named by its key; the same table for the static rules is each rule's `modes`
+# (tools/render.py). Every mode but hardened assumes the environment
+# docs/POLICY.md describes around the agent (a broker that limits GitHub
+# writes, an installed sandbox, no credentials), and the guard refuses
+# supervised outside one (hooks/guard, held_mode()).
+MODES = ("hardened", "supervised", "unattended")
 MODE_SEVERITY = {
-    "assisted": {
-        # A read of a path the guard cannot resolve: the agent's environment
-        # holds no credentials of its own, and the sandbox denies the paths
-        # that hold them.
-        "unresolved-read": "low",
-    },
-    "permissive": {
+    "supervised": {
         # What the guard raises only because it cannot judge the line: a path
         # it cannot resolve (the sandbox confines writes and denies credential
         # reads), a line or a part of one it cannot read, and a yq expression
         # that names its own file. Nothing here is a judgment, so each is left
-        # to the classifier; every finding that is one keeps its decision.
+        # to the classifier.
         "unresolved-read": "low",
         "unresolved-write": "low",
         "parse": "low",
         "yq-load": "low",
+        # No static rule allows an AWS write, so it reaches the classifier;
+        # the static rules that ask for one (aws s3 cp...) still ask.
+        "aws-write": "low",
+        # A static rule allows gh api as a read, so a write the guard lets go
+        # is allowed, not left to the classifier: the review flow's replies
+        # and resolved threads, the only ones the gh broker passes.
+        "graphql-mutation": "low",
+        "gh-api-write": "low",
     },
     "unattended": {
         "unresolved-read": "low",
@@ -1338,7 +1341,7 @@ def _aws(seg, ctx):
         elif op == "rb" and "--force" in rest:
             yield Finding("severe", "aws s3 rb --force deletes a bucket and its contents")
         elif op in ("cp", "mv", "rm", "rb", "mb", "sync"):
-            yield Finding("moderate", f"aws s3 {op} changes stored objects")
+            yield Finding("moderate", f"aws s3 {op} changes stored objects", "aws-write")
         return
     if op in AWS_IRREVERSIBLE or (op.startswith("delete-") and "--skip-final-snapshot" in rest):
         yield Finding("severe", f"aws {service} {op} cannot be undone")
@@ -1349,7 +1352,7 @@ def _aws(seg, ctx):
     elif op.startswith(AWS_READ_PREFIXES):
         return
     else:
-        yield Finding("moderate", f"aws {service} {op} changes AWS resources")
+        yield Finding("moderate", f"aws {service} {op} changes AWS resources", "aws-write")
 
 
 def _aws_service_op(words):

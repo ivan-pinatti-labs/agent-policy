@@ -208,12 +208,12 @@ def load_guard(name):
     return module
 
 
-class PermissiveNeedsItsEnvironment(unittest.TestCase):
-    """docs/POLICY.md, "Modes": the guard takes permissive only where the
+class SupervisedNeedsItsEnvironment(unittest.TestCase):
+    """docs/POLICY.md, "Modes": the guard takes supervised only where the
     environment declares it, and otherwise runs hardened and says so."""
 
     def setUp(self):
-        self.guard = load_guard("guard_for_permissive")
+        self.guard = load_guard("guard_for_supervised")
         self.tmp = Path(tempfile.mkdtemp())
         self.marker = self.tmp / ".containerenv"
         self.marker.write_text("")
@@ -222,7 +222,7 @@ class PermissiveNeedsItsEnvironment(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
-    def hook(self, command, level="permissive", agent="claude", mode="permissive"):
+    def hook(self, command, level="supervised", agent="claude", mode="supervised"):
         env = {"HOME": "/home/user", "XDG_CONFIG_HOME": "/nonexistent"}
         if level is not None:
             env[self.guard.BOUNDARY_LEVEL] = level
@@ -242,8 +242,8 @@ class PermissiveNeedsItsEnvironment(unittest.TestCase):
 
     def test_held_where_the_environment_declares_it(self):
         self.assertEqual(
-            ("permissive", ""),
-            self.guard.held_mode("permissive", "claude", {"AIRLOCK_LEVEL": "permissive"}),
+            ("supervised", ""),
+            self.guard.held_mode("supervised", "claude", {"AGENT_POLICY_MODE": "supervised"}),
         )
         answer, err = self.hook("cat $f")
         self.assertEqual({}, answer)
@@ -260,14 +260,14 @@ class PermissiveNeedsItsEnvironment(unittest.TestCase):
                 self.assertEqual("deny", self.decision(self.hook(command)[0]))
 
     def test_refused_without_the_level(self):
-        for level in (None, "assisted", "hardened", ""):
+        for level in (None, "unattended", "hardened", ""):
             with self.subTest(level=level):
                 # A line the guard has no opinion on still carries the notice.
                 answer, _ = self.hook("ls", level=level)
                 self.assertNotIn("hookSpecificOutput", answer)
-                self.assertIn("permissive mode was refused", answer["systemMessage"])
-                self.assertIn("AIRLOCK_LEVEL is not permissive", answer["systemMessage"])
-                # Hardened: what permissive leaves to the classifier asks.
+                self.assertIn("supervised mode was refused", answer["systemMessage"])
+                self.assertIn("AGENT_POLICY_MODE is not supervised", answer["systemMessage"])
+                # Hardened: what supervised leaves to the classifier asks.
                 for command in ("cat $f", "echo 'unterminated"):
                     answer, _ = self.hook(command, level=level)
                     self.assertEqual("ask", self.decision(answer))
@@ -306,7 +306,7 @@ class PermissiveNeedsItsEnvironment(unittest.TestCase):
             mock.patch.object(sys, "stdin", io.StringIO(payload)),
             contextlib.redirect_stdout(out),
         ):
-            self.guard.main(["--mode", "permissive", "--allow", str(allow)])
+            self.guard.main(["--mode", "supervised", "--allow", str(allow)])
         answer = json.loads(out.getvalue())
         self.assertEqual("allow", answer["hookSpecificOutput"]["permissionDecision"])
         self.assertIn("refused", answer["systemMessage"])
@@ -316,7 +316,7 @@ class PermissiveNeedsItsEnvironment(unittest.TestCase):
             mock.patch.object(sys, "stdin", io.StringIO("not json")),
             contextlib.redirect_stdout(out),
         ):
-            self.guard.main(["--mode", "permissive"])
+            self.guard.main(["--mode", "supervised"])
         answer = json.loads(out.getvalue())
         self.assertEqual("deny", answer["hookSpecificOutput"]["permissionDecision"])
         self.assertIn("refused", answer["systemMessage"])

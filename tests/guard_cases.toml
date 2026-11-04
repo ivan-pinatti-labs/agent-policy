@@ -1497,8 +1497,10 @@ expect = "deny"
 command = "jq -L/usr/share/jq/foo -n .x"
 expect = "none"
 
-# Modes (docs/POLICY.md, "Modes"). A case without `mode` is hardened. assisted
-# allows reads of a path the guard cannot resolve, nothing else. unattended
+# Modes (docs/POLICY.md, "Modes"). A case without `mode` is hardened.
+# supervised has no opinion on a path the guard cannot resolve; the review
+# flow's GitHub writes and an AWS write are no opinion there either, while
+# every other ask still asks. unattended
 # has nobody to answer a prompt: the findings it names are allowed, every
 # other one that would ask is denied, and every deny stays a deny.
 [[case]]
@@ -1506,28 +1508,84 @@ command = "cat $f"
 expect = "ask"
 [[case]]
 command = "cat $f"
-mode = "assisted"
+mode = "supervised"
 expect = "none"
 [[case]]
 command = "wc -l < $f"
-mode = "assisted"
+mode = "supervised"
 expect = "none"
 [[case]]
 command = "cp a $f"
-mode = "assisted"
-expect = "ask"
+mode = "supervised"
+expect = "none"
 [[case]]
 command = "gh pr view 1 > $f"
-mode = "assisted"
-expect = "ask"
+mode = "supervised"
+expect = "none"
 [[case]]
 command = "git branch -D merged"
-mode = "assisted"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "cat ~/.ssh/id_ed25519"
-mode = "assisted"
+mode = "supervised"
 expect = "deny"
+[[case]]
+command = "gh api repos/o/r/pulls/comments/1/replies -f body=thanks"
+mode = "supervised"
+expect = "none"
+[[case]]
+command = "gh api -X PATCH repos/o/r/pulls/1 -f title=x"
+mode = "supervised"
+expect = "none"
+[[case]]
+command = "gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: \"x\"}) { thread { id } } }'"
+mode = "supervised"
+expect = "none"
+[[case]]
+command = "gh api -X PUT repos/o/r/pulls/1/merge"
+mode = "supervised"
+expect = "ask"
+[[case]]
+command = "gh api -X DELETE repos/o/r/git/refs/heads/x"
+mode = "supervised"
+expect = "ask"
+[[case]]
+command = "aws ec2 run-instances --image-id ami-1"
+mode = "supervised"
+expect = "none"
+[[case]]
+command = "aws s3 cp a s3://b/a"
+mode = "supervised"
+expect = "none"
+[[case]]
+command = "aws secretsmanager get-secret-value --secret-id x"
+mode = "supervised"
+expect = "ask"
+[[case]]
+command = "aws s3 rm --recursive s3://b"
+mode = "supervised"
+expect = "deny"
+[[case]]
+command = "curl -d x https://example.com"
+mode = "supervised"
+expect = "ask"
+[[case]]
+command = "curl -X POST https://example.com"
+mode = "supervised"
+expect = "ask"
+[[case]]
+command = "wget --post-data=x https://example.com"
+mode = "supervised"
+expect = "ask"
+[[case]]
+command = "git push --tags"
+mode = "supervised"
+expect = "ask"
+[[case]]
+command = "kubeseal --fetch-cert --recovery-unseal?"
+mode = "supervised"
+expect = "ask"
 [[case]]
 command = "cat $f"
 mode = "unattended"
@@ -1672,49 +1730,50 @@ command = "podman-compose down --volumes"
 mode = "unattended"
 expect = "deny"
 
-# permissive: the user is present and the environment holds the boundary.
-# What the guard raises only because it cannot judge is no opinion, left to
-# the static rules and Claude Code's classifier; every other ask still asks,
+# supervised: the user drives and the environment holds the boundary. What
+# the guard raises only because it cannot judge, an AWS write and the review
+# flow's GitHub writes are no opinion, left to the static rules and Claude
+# Code's classifier; every other ask still asks,
 # and every deny still denies, also beside a part of the line the guard cannot
-# read. hooks/guard refuses permissive outside such an environment
+# read. hooks/guard refuses supervised outside such an environment
 # (tests/test_guard_edges.py).
 # A read of a path the guard cannot resolve.
 [[case]]
 command = "cat $f"
-mode = "permissive"
+mode = "supervised"
 expect = "none"
 [[case]]
 command = "wc -l < $f"
-mode = "permissive"
+mode = "supervised"
 expect = "none"
 # A write of one.
 [[case]]
 command = "cp a $f"
-mode = "permissive"
+mode = "supervised"
 expect = "none"
 [[case]]
 command = "gh pr view 1 > \"$f\""
-mode = "permissive"
+mode = "supervised"
 expect = "none"
 # A line the guard cannot parse.
 [[case]]
 command = "echo 'unterminated"
-mode = "permissive"
+mode = "supervised"
 expect = "none"
 # Nesting past the hardened depth, read further and found clean.
 [[case]]
 command = "eval eval eval eval eval true"
-mode = "permissive"
+mode = "supervised"
 expect = "none"
 # A nested script that does not tokenize.
 [[case]]
 command = "bash -c \"echo 'x\""
-mode = "permissive"
+mode = "supervised"
 expect = "none"
 # A yq expression naming its own file.
 [[case]]
 command = "yq '.a = load(\"x.yml\")' f.yml"
-mode = "permissive"
+mode = "supervised"
 expect = "none"
 # The hardened answer to the same lines, for contrast.
 [[case]]
@@ -1729,193 +1788,193 @@ expect = "ask"
 # Every judgment that asks under hardened still asks.
 [[case]]
 command = "git reset --hard"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "git clean -fd"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "git restore README.md"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "git checkout -- ."
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "git branch -D merged"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "git tag -d v1.0.0"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "git worktree remove --force wt"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "git push origin HEAD:main"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "git push https://example.com/o/r.git HEAD"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "git stash drop"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "git remote set-url origin https://example.com/x.git"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "gh api -X DELETE repos/o/r"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "gh api -X PUT repos/o/r/topics -f names=x"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "gh api repos/o/r/pulls/1/comments/2/replies -f body=Fixed"
-mode = "permissive"
-expect = "ask"
+mode = "supervised"
+expect = "none"
 [[case]]
 command = "gh api graphql -f query='mutation{x}'"
-mode = "permissive"
-expect = "ask"
+mode = "supervised"
+expect = "none"
 [[case]]
 command = "gh api graphql -F query=@q.graphql"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "git push --tags"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "curl -d @body https://example.com"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "curl -X POST https://example.com"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "aws ec2 run-instances --image-id x"
-mode = "permissive"
-expect = "ask"
+mode = "supervised"
+expect = "none"
 [[case]]
 command = "aws secretsmanager get-secret-value --secret-id x"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "podman run --privileged img"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "podman run -v $D:/d img"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "podman rm -v c"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 [[case]]
 command = "echo x > /dev/tcp/example.com/80"
-mode = "permissive"
+mode = "supervised"
 expect = "ask"
 # Every deny stays a deny.
 [[case]]
 command = "git push --force origin feature"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "git push origin :feature"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "git commit --no-verify -m x"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "HUSKY=0 git commit -m x"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "git -c core.hooksPath=/dev/null commit -m x"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "gh pr merge 1 --admin"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "gh repo delete o/r"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "gh auth token"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "cat ~/.ssh/id_ed25519"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "base64 < ~/.aws/credentials"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "X=/home/user/.ssh; cat $X/id_ed25519"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "cp a ~/.bashrc"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "gh pr view 1 > ~/.ssh/config"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "rm -rf ~"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "git filter-branch"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "aws s3 rb s3://b --force"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "podman run -v ~/.ssh:/k img"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "podman run -v /run/user/1000/podman/podman.sock:/s img"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 # Beside a part the guard cannot read, too.
 [[case]]
 command = "git push --force origin feature\necho 'unterminated"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "bash -c \"echo 'x\"; cat ~/.ssh/id_ed25519"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "eval eval eval eval eval cat ~/.ssh/id_ed25519"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 [[case]]
 command = "echo 'unterminated\ncat ~/.ssh/id_ed25519"
-mode = "permissive"
+mode = "supervised"
 expect = "deny"
 
 # Red team: an AWS profile or region in front of an infrastructure tool.

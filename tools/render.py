@@ -45,10 +45,10 @@ MARKER = "# Managed by agent-policy (tools/render.py). Local edits are overwritt
 # out by --no-scratch, for an environment that has no scratchpad.
 SCRATCH_FILE = "70-scratch.toml"
 SCRATCH_DIR = "~/scratch"
-# Modes Codex is not rendered for. permissive leaves what the guard cannot
+# Modes Codex is not rendered for. supervised leaves what the guard cannot
 # judge to Claude Code's auto mode classifier, and Codex has none, so a
-# permissive rendering writes Codex's files as hardened.
-CLAUDE_ONLY_MODES = ("permissive",)
+# supervised rendering writes Codex's files as hardened.
+CLAUDE_ONLY_MODES = ("supervised",)
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

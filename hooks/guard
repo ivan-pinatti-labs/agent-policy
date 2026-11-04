@@ -22,7 +22,7 @@ Silence means no opinion: the static rules (policy/*.toml) decide, and
 what they do not name falls to the agent (Claude Code's auto mode
 classifier, or its prompt).
 
---mode permissive is refused, and the guard runs hardened, unless the
+--mode supervised is refused, and the guard runs hardened, unless the
 environment declares it holds the boundary (held_mode()).
 
 With the ask log on (lib/agent_policy/asklog.py), every ask and deny it can
@@ -58,17 +58,17 @@ HAND_OFF = (
 )
 
 
-# permissive (docs/POLICY.md, "Modes") leaves what the guard cannot judge to
+# supervised (docs/POLICY.md, "Modes") leaves what the guard cannot judge to
 # Claude Code's classifier, which is safe only where an environment around
 # the agent holds the boundary: a devcontainer-airlock workbench. It declares
-# that twice, and the guard takes permissive only when both hold: the session
-# level it gives the agent (AIRLOCK_LEVEL, which a command the agent runs
+# that twice, and the guard takes supervised only when both hold: the session
+# level it gives the agent (AGENT_POLICY_MODE, which a command the agent runs
 # cannot change for the agent itself or its hooks), and the file podman
 # writes into every container it runs, which no host has.
-BOUNDARY_LEVEL = "AIRLOCK_LEVEL"
+BOUNDARY_LEVEL = "AGENT_POLICY_MODE"
 CONTAINER_MARKER = "/run/.containerenv"
 REFUSED = (
-    "agent-policy: permissive mode was refused, so this session runs hardened. "
+    "agent-policy: supervised mode was refused, so this session runs hardened. "
     "It is only for an environment that holds the boundary (docs/POLICY.md, "
     '"Modes"); here {why}.'
 )
@@ -76,15 +76,15 @@ REFUSED = (
 
 def held_mode(mode, agent, env):
     """(the mode the guard runs, a notice for the user or ""). Every mode but
-    permissive is taken as given. permissive is Claude Code's alone (Codex has
+    supervised is taken as given. supervised is Claude Code's alone (Codex has
     no classifier to leave a line to) and needs the environment's word for it;
     anything less fails closed to hardened, and says why."""
-    if mode != "permissive":
+    if mode != "supervised":
         return mode, ""
     if agent != "claude":
         return "hardened", REFUSED.format(why="the agent is not Claude Code")
-    if env.get(BOUNDARY_LEVEL) != "permissive":
-        return "hardened", REFUSED.format(why=f"{BOUNDARY_LEVEL} is not permissive")
+    if env.get(BOUNDARY_LEVEL) != "supervised":
+        return "hardened", REFUSED.format(why=f"{BOUNDARY_LEVEL} is not supervised")
     if not os.path.isfile(CONTAINER_MARKER):
         return "hardened", REFUSED.format(why="the guard is not running in a container")
     return mode, ""
@@ -241,6 +241,7 @@ def main(argv):
             "allow",
             "agent-policy: allowed once the guard read past git -C, an aws service"
             " or an AWS profile in front",
+            shown,
         )
         return 0
     if finding is None:
