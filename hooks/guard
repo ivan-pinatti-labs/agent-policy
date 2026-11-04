@@ -18,7 +18,12 @@ cwd) and answers only when lib/agent_policy/checks.py finds something:
         they cannot express without a wildcard Claude Code warns about
         (approve() in checks.py). Every deny and ask rule still applies.
 
-Silence means no opinion: the static rules (policy/*.toml) decide.
+Silence means no opinion: the static rules (policy/*.toml) decide, and
+what they do not name falls to the agent (Claude Code's auto mode
+classifier, or its prompt).
+
+--mode supervised is refused, and the guard runs hardened, unless the
+environment declares it holds the boundary (held_mode()).
 
 With the ask log on (lib/agent_policy/asklog.py), every ask and deny it can
 see is also appended to a local file, after the answer is written; a log
@@ -53,18 +58,58 @@ HAND_OFF = (
 )
 
 
-def respond(decision, reason):
-    json.dump(
-        {
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": decision,
-                "permissionDecisionReason": reason,
-            }
-        },
-        sys.stdout,
-    )
+# supervised (docs/POLICY.md, "Modes") leaves what the guard cannot judge to
+# Claude Code's classifier, which is safe only where an environment around
+# the agent holds the boundary: a devcontainer-airlock workbench. It declares
+# that twice, and the guard takes supervised only when both hold: the session
+# level it gives the agent (AGENT_POLICY_MODE, which a command the agent runs
+# cannot change for the agent itself or its hooks), and the file podman
+# writes into every container it runs, which no host has.
+BOUNDARY_LEVEL = "AGENT_POLICY_MODE"
+CONTAINER_MARKER = "/run/.containerenv"
+REFUSED = (
+    "agent-policy: supervised mode was refused, so this session runs hardened. "
+    "It is only for an environment that holds the boundary (docs/POLICY.md, "
+    '"Modes"); here {why}.'
+)
+
+
+def held_mode(mode, agent, env):
+    """(the mode the guard runs, a notice for the user or ""). Every mode but
+    supervised is taken as given. supervised is Claude Code's alone (Codex has
+    no classifier to leave a line to) and needs the environment's word for it;
+    anything less fails closed to hardened, and says why."""
+    if mode != "supervised":
+        return mode, ""
+    if agent != "claude":
+        return "hardened", REFUSED.format(why="the agent is not Claude Code")
+    if env.get(BOUNDARY_LEVEL) != "supervised":
+        return "hardened", REFUSED.format(why=f"{BOUNDARY_LEVEL} is not supervised")
+    if not os.path.isfile(CONTAINER_MARKER):
+        return "hardened", REFUSED.format(why="the guard is not running in a container")
+    return mode, ""
+
+
+def respond(decision, reason, notice=""):
+    answer = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": decision,
+            "permissionDecisionReason": reason,
+        }
+    }
+    if notice:
+        answer["systemMessage"] = notice
+    json.dump(answer, sys.stdout)
     sys.stdout.flush()
+
+
+def tell(notice):
+    """`notice` with no decision, for a line the guard leaves to the rules:
+    Claude Code shows a systemMessage to the user on its own."""
+    if notice:
+        json.dump({"systemMessage": notice}, sys.stdout)
+        sys.stdout.flush()
 
 
 def option(argv, name, default=None):
@@ -154,13 +199,19 @@ def main(argv):
     # unknown one is hardened, the policy as written.
     mode = option(argv, "--mode", "hardened")
     mode = mode if mode in MODES else "hardened"
+    mode, notice = held_mode(mode, agent, os.environ)
+    # Claude Code shows the notice (respond(), tell()); Codex reads only the
+    # decision, so its notice goes to standard error.
+    shown = notice if agent == "claude" else ""
+    if notice and not shown:
+        print(notice, file=sys.stderr)
     # Codex is never approved: its allow runs a command outside its sandbox.
     data = load_rules(option(argv, "--allow")) if agent == "claude" else {}
     allowed = load_allowed(data)
     try:
         payload = json.load(sys.stdin)
     except ValueError:
-        respond("deny", UNCHECKED)
+        respond("deny", UNCHECKED, shown)
         log_ask(unchecked(agent, mode))
         return 0
     tool_input = payload.get("tool_input") if isinstance(payload, dict) else None
@@ -169,7 +220,7 @@ def main(argv):
         command = " ".join(str(word) for word in command)
     if not isinstance(command, str) or not command.strip():
         if not isinstance(payload, dict):
-            respond("deny", UNCHECKED)
+            respond("deny", UNCHECKED, shown)
             log_ask(unchecked(agent, mode))
         return 0
     cwd = payload.get("cwd")
@@ -182,7 +233,7 @@ def main(argv):
         finding = evaluate(command, cwd, mode=mode)
         approved = finding is None and approve(command, cwd, allowed)
     except Exception:
-        respond("deny", UNCHECKED)
+        respond("deny", UNCHECKED, shown)
         log_ask(unchecked(agent, mode, command, cwd))
         return 0
     if approved:
@@ -190,9 +241,11 @@ def main(argv):
             "allow",
             "agent-policy: allowed once the guard read past git -C, an aws service"
             " or an AWS profile in front",
+            shown,
         )
         return 0
     if finding is None:
+        tell(shown)
         # Only Claude Code's hook is given the rules (--allow), and without
         # them there is nothing to tell an allowed line from one that asks.
         if allowed:
@@ -204,6 +257,7 @@ def main(argv):
         respond(
             "deny",
             f"Blocked ({tag}): {finding.reason}. " + HAND_OFF.format(command=one_line),
+            shown,
         )
     elif agent == "codex":
         respond(
@@ -213,7 +267,7 @@ def main(argv):
             f"to run it themselves with `! {one_line}`.",
         )
     else:
-        respond("ask", f"{tag}: {finding.reason}")
+        respond("ask", f"{tag}: {finding.reason}", shown)
     log_ask(found(agent, mode, command, cwd, finding))
     return 0
 

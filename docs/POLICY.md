@@ -39,18 +39,86 @@ The policy as written is `hardened`, the default everywhere. Two more modes
 exist for an environment that knows who is watching, such as a
 devcontainer-airlock session, which picks one per session. Each is a
 rendering of the same rules (`tools/render.py --mode`), and the guard is told
-which one it runs under (`guard --mode`).
+which one it runs under (`guard --mode`). A mode is named for who is there;
+the severity scale above rates one command, and each mode decides what
+happens to each rating.
 
-| Mode         | Who is there            | What changes                                                        |
-| ------------ | ----------------------- | ------------------------------------------------------------------- |
-| `hardened`   | the user, at every step | nothing: the policy as written                                      |
-| `assisted`   | the user, present       | a read of a path the guard cannot resolve is allowed                |
-| `unattended` | nobody                  | nothing asks: what would ask is denied, unless named for this mode  |
+| Mode         | Who is there            | What changes                                                       |
+| ------------ | ----------------------- | ------------------------------------------------------------------ |
+| `hardened`   | the user, at every step | nothing: the policy as written                                     |
+| `supervised` | the user, driving       | only a judgment asks; the rest goes to the auto mode classifier    |
+| `unattended` | nobody                  | nothing asks: what would ask is denied, unless named for this mode |
 
-Assisted allows `cat $f` and `wc -l < $f`; every static rule and every other
-finding is as hardened. Unattended has nobody to answer a prompt, so a rule
-or finding that would ask is denied there, unless the policy names it for
-this mode, and then it is allowed. Every deny stays a deny, whatever the
+Supervised is for a session the user drives, inside an environment that
+holds the boundary itself, and it is there to stop the prompts that
+inspecting, parsing and fetching bring, so that a prompt means a decision.
+It gives up every finding the guard raises only because it cannot judge the
+line:
+
+- a read or a write of a path the guard cannot resolve (`cat $f`,
+  `cp a "$d"`, `gh pr view 1 > "$f"`);
+- a command line it cannot parse, such as an unbalanced quote;
+- a script nested in the line (`bash -c`, `eval`, a substitution) that does
+  not tokenize, or that nests deeper than the guard reads;
+- a yq expression that loads a file it names itself.
+
+It also gives up two findings that are judgments, each for a reason of its
+own:
+
+- an AWS write (`aws ec2 run-instances`). No static rule allows one, so it
+  goes to the classifier; the static rules that ask for one (`aws s3 cp`,
+  `mv`, `rm`...) still ask.
+- the review flow's GitHub writes: `gh api` POST and PATCH, and GraphQL
+  mutations. A static rule allows `gh api` as a read, so these are allowed
+  rather than left to the classifier, as in unattended. The environment
+  limits them: devcontainer-airlock's gh broker passes only a reply to a
+  review comment and the mutations on its list (resolving a thread).
+
+The guard returns no decision for these, the same silence it gives a line it
+finds nothing on. The static rules then decide, and what no rule names goes
+to Claude Code's auto mode classifier: the session runs with
+`--permission-mode auto`, as unattended does. The static rules are the ones
+hardened renders, unchanged, since a command no rule names already falls to
+the classifier. Every other finding keeps its decision. Each `high` finding
+and rule still asks (applying or deploying infrastructure, pushing straight
+to `main`, discarding work, a release, repository settings), and so do the
+`moderate` ones that a static rule would otherwise allow outright, where
+nothing in the environment limits them: `gh api` PUT and DELETE, `curl` or
+`wget` sending data, `git push --tags`, and a `kubeseal` argument the guard
+cannot read. Every deny stays a deny.
+
+A line the guard cannot read whole is still read as far as it can be, so a
+deny written beside the part it gives up stays a deny: in supervised the
+guard reads nested scripts and substitutions sixteen levels deep rather than
+four, and reads a line with an unbalanced quote one line at a time, a nested
+script included, since the shell runs each line before it reads the next. A
+backslash continuation joins its two lines first, so a command split over
+them is read whole, and only a line that cannot be read on its own is
+skipped. `git push --force origin x` followed by a line with an unbalanced
+quote is denied, inside `bash -c` too, and so is `eval` five deep around a
+read of `~/.ssh`. A credential path hidden behind a variable the guard cannot
+resolve is left to the classifier and stopped by the sandbox, which denies
+reading every credential path. A write to such a path is confined by the
+sandbox too, except through a command the sandbox does not run (its
+excluded commands), where only the workbench around it holds.
+
+The guard takes supervised only when the environment declares it, because
+the mode is only as safe as what surrounds the agent. Two things must hold:
+`AGENT_POLICY_MODE` is `supervised` in the guard's environment, which a
+devcontainer-airlock workbench sets for the session and which no command the
+agent runs can change for the agent or its hooks; and the guard runs in a
+container (`/run/.containerenv`, the file podman writes into every container
+it runs, exists). A host has no such file, so a drop-in rendered for
+supervised and installed on a plain host cannot take effect there by
+accident. When either is missing, or the agent is Codex, the guard runs
+hardened and says so: a `systemMessage` on every Bash call in Claude Code,
+standard error for Codex. Supervised is Claude Code's alone. Codex has no
+classifier to leave a line to, so a supervised rendering writes Codex's files
+as hardened, and devcontainer-airlock runs Codex hardened.
+
+Unattended has nobody to answer a prompt, so a rule or finding that would
+ask is denied there, unless the policy names it for this mode, and then it
+is allowed. Every deny stays a deny, whatever the
 mode. What unattended allows is the development cycle, and only that:
 
 - `gh release create/edit/upload`, `gh workflow run`, `gh issue close`,
@@ -65,8 +133,8 @@ mode. What unattended allows is the development cycle, and only that:
   startup paths included when they hide behind a variable.
 
 These assume an environment around the agent that holds the line the policy
-cannot. Unattended is meant for one, such as a devcontainer-airlock
-session: there the gh broker passes only review replies and resolving a
+cannot. Supervised and unattended are meant for one, such as a
+devcontainer-airlock session: there the gh broker passes only review replies and resolving a
 thread among `gh api` writes, the command sandbox (installed, not trial)
 confines writes to the session's own folders and denies reading credential
 paths, the workbench holds no credentials of its own, and podman reaches
@@ -82,7 +150,9 @@ straight to `main`, `find -exec` and `-delete`, a request body sent with
 command line the guard cannot parse. A rule added later starts out denied
 there too, so nothing new can stall an unattended run on a prompt.
 
-A static rule names its own exception with `modes`:
+A static rule names its own exception for unattended with `modes`.
+Supervised takes none: it renders the static rules as hardened does, so a
+guard that refuses supervised leaves the session exactly hardened.
 
 ```toml
 [[rule]]

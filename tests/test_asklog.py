@@ -200,7 +200,7 @@ class FindingsNameTheirCheck(unittest.TestCase):
 
     def test_checks(self):
         self.assertEqual("git", self.check("git branch -D x"))
-        self.assertEqual("git", self.check("git branch -D x", mode="assisted"))
+        self.assertEqual("git", self.check("git branch -D x", mode="supervised"))
         self.assertEqual("git", self.check("git reset --hard", mode="unattended"))
         self.assertEqual("redirects", self.check("echo x > /dev/tcp/h/1"))
         self.assertEqual("reader", self.check("cat ~/.ssh/id_ed25519"))

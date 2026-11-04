@@ -81,7 +81,16 @@ RESERVED_PREFIX = {
 RESERVED_HEADER = {"for", "select", "case"}
 SHELLS = {"bash", "sh", "zsh", "dash"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+# The delimiter must end the word, so `<<E"OF"` is not read as `<<E`.
+HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1(?![^\s;&|()<>])")
+# Characters after which a `#` starts a comment rather than sitting in a word.
+WORD_BREAK = frozenset(" \t;&|()<>")
+
+
+# How deep segments() reads substitutions, eval and `bash -c` inside each
+# other: DEPTH by default, PARTIAL_DEPTH when it may skip what it cannot read.
+DEPTH = 4
+PARTIAL_DEPTH = 16
 
 
 class ParseError(ValueError):
@@ -103,18 +112,82 @@ class Segment:
         return self.words[0].rsplit("/", 1)[-1] if self.words else ""
 
 
-def strip_heredoc_bodies(text):
-    """Keep the line that opens a heredoc, drop its body up to the terminator."""
-    out, terminator = [], None
+# A backslash before a newline joins the two lines, unless that backslash is
+# itself escaped (an even run of backslashes is literal).
+CONTINUATION = re.compile(r"(?<!\\)((?:\\\\)*)\\\n")
+
+
+def lines(text):
+    """The lines the shell reads one at a time: heredoc bodies dropped and
+    backslash continuations joined, so a command split over two lines is
+    read whole. Each terminator is kept, so lines read together again end
+    their heredoc where the shell does."""
+    stripped = strip_heredoc_bodies(text, keep_terminator=True)
+    return CONTINUATION.sub(r"\1", stripped).split("\n")
+
+
+# A line that ends in a backslash which is not itself escaped.
+CONTINUED = re.compile(r"(?<!\\)(?:\\\\)*\\$")
+
+
+def _heredoc_opener(line, quote):
+    """The delimiter of the first heredoc this line opens, and the quote still
+    open at its end (`'`, `"`, `$'` or None), given the quote open at its
+    start. Only a `<<` outside quotes and comments opens a heredoc, and a
+    here string (`<<<`) does not, so quoted text is never mistaken for one."""
+    opened, i = None, 0
+    while i < len(line):
+        char = line[i]
+        if quote == "'":
+            quote = None if char == "'" else quote
+        elif quote is not None:
+            if char == "\\":
+                i += 1
+            elif char == quote[-1]:
+                quote = None
+        elif char == "\\":
+            i += 1
+        elif line.startswith("$'", i):
+            quote, i = "$'", i + 1
+        elif char in "'\"":
+            quote = char
+        elif char == "#" and (i == 0 or line[i - 1] in WORD_BREAK):
+            break
+        elif line.startswith("<<<", i):
+            i += 2
+        elif match := HEREDOC.match(line, i):
+            opened = opened or match.group(2)
+            i = match.end() - 1
+        i += 1
+    return opened, quote
+
+
+def strip_heredoc_bodies(text, keep_terminator=False):
+    r"""Keep the line that opens a heredoc, drop its body up to the terminator.
+    Outside a body, a continued line is joined to the next first, so an
+    opener split over two lines (`cat <<\` then `EOF`) is still an opener."""
+    out, terminator, pending, quote = [], None, "", None
     for line in text.split("\n"):
         if terminator is not None:
             if line.strip() == terminator:
                 terminator = None
+                if keep_terminator:
+                    out.append(line)
             continue
+        line = pending + line
+        opened, end_quote = _heredoc_opener(line, quote)
+        if end_quote != "'" and CONTINUED.search(line):
+            pending = line[:-1]
+            continue
+        pending = ""
         out.append(line)
-        match = HEREDOC.search(line)
-        if match:
-            terminator = match.group(2)
+        quote = end_quote
+        # A quote left open runs into the next line, so where a body would
+        # start is unclear: keep the following lines checked.
+        if quote is None:
+            terminator = opened
+    if pending:
+        out.append(pending)
     return "\n".join(out)
 
 
@@ -155,7 +228,7 @@ def _tokens(text):
     # file: rewrite them to `>`/`>>` so the target is checked as one.
     text = text.replace("&>>", ">>").replace("&>", ">")
     text = re.sub(r">&(?=\s*[^\s\d-])", ">", text)
-    text = text.replace("\n", " ; ")
+    text = CONTINUATION.sub(r"\1", text).replace("\n", " ; ")
     lexer = shlex.shlex(text, posix=True, punctuation_chars=";&|()<>")
     lexer.whitespace_split = True
     lexer.commenters = ""
@@ -231,16 +304,37 @@ def _split_redirects(tokens):
     return words, redirects
 
 
-def segments(command, cwd=None, _depth=0, _known=None):
+def segments(command, cwd=None, _depth=0, _known=None, partial=False):
     """Yield a Segment for every simple command the line would run, with the
     variables the line itself certainly sets substituted where it uses them
-    (see Variables), and `$PWD` as `cwd` when it is given."""
-    if _depth > 4:
+    (see Variables), and `$PWD` as `cwd` when it is given.
+
+    A line that cannot be read raises ParseError. With `partial`, a part of
+    it that cannot be read is skipped instead and the rest still yielded:
+    a nested script that does not tokenize, and nesting past PARTIAL_DEPTH,
+    which reads deeper than DEPTH but stops well inside the hook's timeout.
+    Only the top level of the line has to tokenize."""
+    if _depth > (PARTIAL_DEPTH if partial else DEPTH):
+        if partial:
+            return
         # Deeper nesting is not read, so it cannot pass as checked.
         raise ParseError("command substitution or eval nested too deep to check")
     text = strip_heredoc_bodies(command)
+    try:
+        tokens = _tokens(text)
+    except ParseError:
+        if not (partial and _depth):
+            raise
+        # A nested script runs line by line too, so each line before the
+        # one that cannot be read is still read (one line alone: skipped).
+        # Its newlines reach it as ` ; ` (_tokens), so it splits on both.
+        parts = [part for line in lines(text) for part in line.split(" ; ")]
+        if len(parts) > 1:
+            for line in parts:
+                yield from segments(line, _depth=_depth, _known=_known, partial=True)
+        return
     raw, current = [], []
-    for token in [*_tokens(text), None]:
+    for token in [*tokens, None]:
         if token is None or (token and set(token) <= OPERATOR_CHARS):
             raw.append((current, token))
             current = []
@@ -252,7 +346,7 @@ def segments(command, cwd=None, _depth=0, _known=None):
     # the variables set before anything else on it, and $PWD.
     prologue = variables.prologue() if variables else _known
     for inner in _substitutions(text):
-        yield from segments(inner, _depth=_depth + 1, _known=prologue)
+        yield from segments(inner, _depth=_depth + 1, _known=prologue, partial=partial)
     for i, (tokens, _) in enumerate(raw):
         if not tokens:
             continue
@@ -271,7 +365,7 @@ def segments(command, cwd=None, _depth=0, _known=None):
             yield seg
             nested = _nested_script(seg)
             if nested is not None:
-                yield from segments(nested, _depth=_depth + 1)
+                yield from segments(nested, _depth=_depth + 1, partial=partial)
 
 
 def _nested_script(seg):
