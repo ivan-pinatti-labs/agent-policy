@@ -54,6 +54,8 @@ what a prefix cannot see, and the strictest finding wins:
   engine socket, or a mount path with an unexpanded variable);
 - the operation an `aws` command performs (a write verb mid-line, an
   irreversible call, or one that returns a secret value);
+- `kubeseal` unsealing with the controller's private key, wherever the
+  flag sits on the line;
 - who a container belongs to (the guard asks the engine, so it can refuse
   `podman stop` on a protected deployment by name);
 - recursive removal of the home folder, credentials or a protected
@@ -165,12 +167,20 @@ So the renderer leaves those out, and the guard allows the command itself
 - it finds nothing in the line;
 - every simple command on it is one the static rules allow, once the guard
   has read past `git -C <dir>` (the prefixes in
-  `dist/claude/guard-allow.json`) or an aws read verb after any service;
+  `dist/claude/guard-allow.json`), an aws read verb after any service, or
+  an AWS profile or region set in front of an infrastructure tool
+  (`AWS_PROFILE=x kubectl get pods`, which no static rule matches);
 - at least one of them needed that reading, so a line the static rules
   already decide is left to them;
-- no command is wrapped (`sudo`, `env`, `xargs`...), sets a variable (an aws
-  profile or region aside), or redirects anywhere but `/dev/null`, and no
-  `-C` folder is a credential folder or a path it cannot resolve.
+- no command is wrapped (`sudo`, `env`, `xargs`...), sets a variable other
+  than `AWS_PROFILE`, `AWS_REGION` or `AWS_DEFAULT_REGION` in front of aws,
+  atmos, terraform, tofu, kubectl, helm, eksctl, helmfile, kubeseal or pluto
+  (`APPROVE_ENV`), or redirects anywhere but `/dev/null`, `/dev/stdout` or
+  `/dev/stderr`; no command with a
+  variable in front carries an option that runs another program, swaps the
+  kubeconfig, writes a file or changes whom an aws read trusts
+  (`--kubeconfig`, `--helm-binary`, `--post-renderer`, `-out`,
+  `--endpoint-url`...); and no `-C` folder is a credential folder or a path it cannot resolve.
 
 Claude Code applies every deny and ask rule over an allow from a hook, so
 this can only stand in for a static allow, never lift a prompt or a refusal.

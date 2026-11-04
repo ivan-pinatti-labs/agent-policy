@@ -36,7 +36,7 @@ auto_allow_bash_if_sandboxed = false
 excluded_commands = [
   "podman *", "docker *", "podman-compose *", "docker-compose *",
   "agent-scratch *", "git *", "gh *", "ssh *", "scp *",
-  "aws *", "eksctl *", "kubectl *", "helm *",
+  "aws *", "eksctl *", "kubectl *", "helm *", "helmfile *", "kubeseal *", "pluto *",
   "terraform *", "tofu *", "atmos *",
 ]
 

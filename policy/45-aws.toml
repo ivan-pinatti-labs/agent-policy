@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# AWS CLI and eksctl. Read verbs (describe, list, get) are free; write verbs
+# AWS CLI. Read verbs (describe, list, get) are free; write verbs
 # ask, and so does reading a secret's value. Profiles and account IDs are
 # machine specific and stay in the project's own settings. The globs start
 # with `*` so that `AWS_PROFILE=x aws ...` matches too. Codex gets only the
@@ -13,7 +13,6 @@ prefix = [
   ["aws", "sts", "get-caller-identity"],
   ["aws", "s3", "ls"],
   ["aws", "logs", ["tail", "filter-log-events", "get-log-events"]],
-  ["eksctl", ["get", "describe"]],
 ]
 # A read verb after any service (`aws ec2 describe-instances`) is allowed by
 # the guard (approve() in lib/agent_policy/checks.py): a rule for it needs a
@@ -25,7 +24,6 @@ severity = "high"
 reason = "Changes AWS resources or reads a secret value"
 prefix = [
   ["aws", "s3", ["cp", "mv", "rm", "rb", "mb", "sync"]],
-  ["eksctl", ["create", "delete", "upgrade", "scale", "drain", "utils", "set", "unset"]],
 ]
 claude = [
   "Bash(*aws * create-*)", "Bash(*aws * delete-*)", "Bash(*aws * put-*)",
