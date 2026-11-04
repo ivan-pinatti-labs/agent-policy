@@ -117,15 +117,17 @@ CONTINUATION = re.compile(r"(?<!\\)((?:\\\\)*)\\\n")
 def lines(text):
     """The lines the shell reads one at a time: heredoc bodies dropped and
     backslash continuations joined, so a command split over two lines is
-    read whole."""
-    return CONTINUATION.sub(r"\1", strip_heredoc_bodies(text)).split("\n")
+    read whole. Each terminator is kept, so lines read together again end
+    their heredoc where the shell does."""
+    stripped = strip_heredoc_bodies(text, keep_terminator=True)
+    return CONTINUATION.sub(r"\1", stripped).split("\n")
 
 
 # A line that ends in a backslash which is not itself escaped.
 CONTINUED = re.compile(r"(?<!\\)(?:\\\\)*\\$")
 
 
-def strip_heredoc_bodies(text):
+def strip_heredoc_bodies(text, keep_terminator=False):
     r"""Keep the line that opens a heredoc, drop its body up to the terminator.
     Outside a body, a continued line is joined to the next first, so an
     opener split over two lines (`cat <<\` then `EOF`) is still an opener."""
@@ -134,6 +136,8 @@ def strip_heredoc_bodies(text):
         if terminator is not None:
             if line.strip() == terminator:
                 terminator = None
+                if keep_terminator:
+                    out.append(line)
             continue
         line = pending + line
         if CONTINUED.search(line):

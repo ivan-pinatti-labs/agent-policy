@@ -1617,6 +1617,14 @@ expect = "deny"
 command = "cat <<\\\nEOF\ngit push --force origin x\nEOF"
 expect = "none"
 [[case]]
+command = "cat <<EOF\nbody\nEOF\ngit push --force origin feature\necho 'unterminated"
+mode = "supervised"
+expect = "deny"
+[[case]]
+command = "bash -c \"cat <<EOF\nbody\nEOF\ngit push --force origin x\necho 'x\""
+mode = "supervised"
+expect = "deny"
+[[case]]
 command = "git push --\\\nforce origin feature\necho 'unterminated"
 mode = "supervised"
 expect = "deny"
