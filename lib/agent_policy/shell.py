@@ -121,18 +121,31 @@ def lines(text):
     return CONTINUATION.sub(r"\1", strip_heredoc_bodies(text)).split("\n")
 
 
+# A line that ends in a backslash which is not itself escaped.
+CONTINUED = re.compile(r"(?<!\\)(?:\\\\)*\\$")
+
+
 def strip_heredoc_bodies(text):
-    """Keep the line that opens a heredoc, drop its body up to the terminator."""
-    out, terminator = [], None
+    r"""Keep the line that opens a heredoc, drop its body up to the terminator.
+    Outside a body, a continued line is joined to the next first, so an
+    opener split over two lines (`cat <<\` then `EOF`) is still an opener."""
+    out, terminator, pending = [], None, ""
     for line in text.split("\n"):
         if terminator is not None:
             if line.strip() == terminator:
                 terminator = None
             continue
+        line = pending + line
+        if CONTINUED.search(line):
+            pending = line[:-1]
+            continue
+        pending = ""
         out.append(line)
         match = HEREDOC.search(line)
         if match:
             terminator = match.group(2)
+    if pending:
+        out.append(pending)
     return "\n".join(out)
 
 

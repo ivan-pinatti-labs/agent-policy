@@ -1598,6 +1598,25 @@ expect = "ask"
 command = "gh api graphql --input q.json"
 expect = "ask"
 [[case]]
+command = "gh api graphql -f query='mutation{resolveReviewThread(input:{threadId:\\\"x\\\"}){thread{id}}}' -f note=a@b"
+mode = "supervised"
+expect = "none"
+[[case]]
+command = "gh api graphql -Fq=@q.graphql"
+mode = "supervised"
+expect = "ask"
+[[case]]
+command = "gh api graphql --field=query=@q.graphql"
+mode = "supervised"
+expect = "ask"
+[[case]]
+command = "F=--force\ngit push $F origin feature\necho 'unterminated"
+mode = "supervised"
+expect = "deny"
+[[case]]
+command = "cat <<\\\nEOF\ngit push --force origin x\nEOF"
+expect = "none"
+[[case]]
 command = "git push --\\\nforce origin feature\necho 'unterminated"
 mode = "supervised"
 expect = "deny"

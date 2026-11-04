@@ -154,16 +154,19 @@ def evaluate(command, cwd, env=None, inspector=containers.inspect, mode="hardene
 
 
 def _by_line(command, cwd):
-    """The segments of every line of `command` that can be read on its own,
-    for a line that cannot be read whole. The shell runs each line before it
+    """The segments of every line of `command` that can be read, for a line
+    that cannot be read whole. The shell runs each line before it
     reads the next, so a line before an unbalanced quote still runs."""
-    segs = []
+    # Each line is read after the readable ones before it, so a variable an
+    # earlier line sets (`F=--force`) still reaches the line that uses it.
+    readable = []
     for line in lines(command):
         try:
-            segs.extend(segments(line, cwd=cwd, partial=True))
+            list(segments("\n".join([*readable, line]), cwd=cwd, partial=True))
         except ParseError:
             continue
-    return segs
+        readable.append(line)
+    return list(segments("\n".join(readable), cwd=cwd, partial=True))
 
 
 # Variables a command may set and still be approved: each only picks which
@@ -1167,6 +1170,21 @@ def _gh(seg, ctx):
 GH_FIELD_FLAGS = ("-f", "-F", "--field", "--raw-field", "--input")
 
 
+def _field_reads_file(arg, nxt):
+    """Whether this gh api field reads its value from a file: only `-F` and
+    `--field` do, for a value that starts with `@` (`-F query=@q.graphql`);
+    `-f` and `--raw-field` send it as a literal string."""
+    if arg in ("-F", "--field"):
+        field = nxt
+    elif arg.startswith("--field="):
+        field = arg.split("=", 1)[1]
+    elif arg.startswith("-F") and not arg.startswith("--"):
+        field = arg[2:]
+    else:
+        return False
+    return field.partition("=")[2].startswith("@") or field.startswith("@")
+
+
 def _gh_api(args):
     method, has_body, mutation, body_from_file = None, False, False, False
     for i, arg in enumerate(args):
@@ -1186,7 +1204,7 @@ def _gh_api(args):
             value = nxt if arg in GH_FIELD_FLAGS else arg.split("=", 1)[-1]
             if "mutation" in value:
                 mutation = True
-            if "@" in value or arg == "--input" or arg.startswith("--input="):
+            if arg == "--input" or arg.startswith("--input=") or _field_reads_file(arg, nxt):
                 body_from_file = True
     if "graphql" in args:
         # A query read from a file is unseen, whatever the inline fields say,
