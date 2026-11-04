@@ -389,9 +389,6 @@ class RenderModes(unittest.TestCase):
         rule = {"severity": "high"}
         self.assertEqual("high", render.severity_in(rule, "hardened"))
         self.assertEqual("high", render.severity_in(rule, "supervised"))
-        self.assertEqual(
-            "low", render.severity_in(dict(rule, modes={"supervised": "low"}), "supervised")
-        )
         self.assertEqual("severe", render.severity_in(rule, "unattended"))
         self.assertEqual(
             "low", render.severity_in(dict(rule, modes={"unattended": "low"}), "unattended")
@@ -402,6 +399,7 @@ class RenderModes(unittest.TestCase):
         for modes in (
             '{ lenient = "low" }',
             '{ hardened = "low" }',
+            '{ supervised = "low" }',
             '{ unattended = "maybe" }',
             '"low"',
         ):

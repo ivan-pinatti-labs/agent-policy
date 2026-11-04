@@ -49,6 +49,11 @@ SCRATCH_DIR = "~/scratch"
 # judge to Claude Code's auto mode classifier, and Codex has none, so a
 # supervised rendering writes Codex's files as hardened.
 CLAUDE_ONLY_MODES = ("supervised",)
+# Modes a static rule may name its own severity for. supervised renders the
+# static rules as hardened does, so that a guard that refuses it (and runs
+# hardened, saying so) leaves the session exactly as hardened: only the
+# guard's findings change there.
+RULE_MODES = tuple(m for m in MODES[1:] if m != "supervised")
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -117,8 +122,8 @@ def validate(rule, where):
     if rule.get("severity") not in SEVERITY:
         raise PolicyError(f"{where}: severity must be one of {tuple(SEVERITY)}")
     modes = rule.get("modes", {})
-    if not isinstance(modes, dict) or set(modes) - set(MODES[1:]):
-        raise PolicyError(f"{where}: modes may only name {MODES[1:]}")
+    if not isinstance(modes, dict) or set(modes) - set(RULE_MODES):
+        raise PolicyError(f"{where}: modes may only name {RULE_MODES}")
     if any(severity not in SEVERITY for severity in modes.values()):
         raise PolicyError(f"{where}: each mode's severity must be one of {tuple(SEVERITY)}")
     if not isinstance(rule.get("reason"), str) or not rule["reason"]:

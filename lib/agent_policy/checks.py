@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass
 
 from . import containers
-from .shell import ParseError, segments, strip_heredoc_bodies
+from .shell import ParseError, lines, segments
 
 # severity -> (decision, rank). Higher rank wins when several fire. Kept in
 # step with tools/render.py's SEVERITY map and docs/POLICY.md.
@@ -158,7 +158,7 @@ def _by_line(command, cwd):
     for a line that cannot be read whole. The shell runs each line before it
     reads the next, so a line before an unbalanced quote still runs."""
     segs = []
-    for line in strip_heredoc_bodies(command).split("\n"):
+    for line in lines(command):
         try:
             segs.extend(segments(line, cwd=cwd, partial=True))
         except ParseError:
@@ -1186,15 +1186,17 @@ def _gh_api(args):
             value = nxt if arg in GH_FIELD_FLAGS else arg.split("=", 1)[-1]
             if "mutation" in value:
                 mutation = True
-            if "@" in value:
+            if "@" in value or arg == "--input" or arg.startswith("--input="):
                 body_from_file = True
     if "graphql" in args:
-        if mutation:
+        # A query read from a file is unseen, whatever the inline fields say,
+        # so it is never taken for the inline mutation a mode may allow.
+        if body_from_file:
+            yield Finding("moderate", "a GraphQL query read from a file may be a mutation")
+        elif mutation:
             yield Finding(
                 "moderate", "a GraphQL mutation changes data on GitHub", "graphql-mutation"
             )
-        elif body_from_file:
-            yield Finding("moderate", "a GraphQL query read from a file may be a mutation")
         return
     if method is None:
         method = "POST" if has_body else "GET"

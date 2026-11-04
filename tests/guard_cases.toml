@@ -1587,6 +1587,32 @@ command = "kubeseal --fetch-cert --recovery-unseal?"
 mode = "supervised"
 expect = "ask"
 [[case]]
+command = "gh api graphql -F query=@q.graphql -f note=mutation"
+mode = "supervised"
+expect = "ask"
+[[case]]
+command = "gh api graphql --input q.json"
+mode = "supervised"
+expect = "ask"
+[[case]]
+command = "gh api graphql --input q.json"
+expect = "ask"
+[[case]]
+command = "git push --\\\nforce origin feature\necho 'unterminated"
+mode = "supervised"
+expect = "deny"
+[[case]]
+command = "git push --\\\nforce origin feature"
+expect = "deny"
+[[case]]
+command = "bash -c \"git push --force origin x\necho 'x\""
+mode = "supervised"
+expect = "deny"
+[[case]]
+command = "bash -c \"echo a\\\\\ngit push --force origin x\necho 'x\""
+mode = "supervised"
+expect = "deny"
+[[case]]
 command = "cat $f"
 mode = "unattended"
 expect = "none"

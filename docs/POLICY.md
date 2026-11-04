@@ -90,11 +90,13 @@ cannot read. Every deny stays a deny.
 A line the guard cannot read whole is still read as far as it can be, so a
 deny written beside the part it gives up stays a deny: in supervised the
 guard reads nested scripts and substitutions sixteen levels deep rather than
-four, skips only the part it cannot read, and reads a line with an
-unbalanced quote one line at a time, since the shell runs each line before it
-reads the next. `git push --force origin x` followed by a line with an
-unbalanced quote is denied, and so is `eval` five deep around a read of
-`~/.ssh`. A credential path hidden behind a variable the guard cannot
+four, and reads a line with an unbalanced quote one line at a time, a nested
+script included, since the shell runs each line before it reads the next. A
+backslash continuation joins its two lines first, so a command split over
+them is read whole, and only a line that cannot be read on its own is
+skipped. `git push --force origin x` followed by a line with an unbalanced
+quote is denied, inside `bash -c` too, and so is `eval` five deep around a
+read of `~/.ssh`. A credential path hidden behind a variable the guard cannot
 resolve is left to the classifier and stopped by the sandbox, which denies
 reading every credential path. A write to such a path is confined by the
 sandbox too, except through a command the sandbox does not run (its
@@ -148,7 +150,9 @@ straight to `main`, `find -exec` and `-delete`, a request body sent with
 command line the guard cannot parse. A rule added later starts out denied
 there too, so nothing new can stall an unattended run on a prompt.
 
-A static rule names its own exception with `modes`:
+A static rule names its own exception for unattended with `modes`.
+Supervised takes none: it renders the static rules as hardened does, so a
+guard that refuses supervised leaves the session exactly hardened.
 
 ```toml
 [[rule]]

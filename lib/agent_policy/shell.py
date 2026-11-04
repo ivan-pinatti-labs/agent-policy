@@ -109,6 +109,18 @@ class Segment:
         return self.words[0].rsplit("/", 1)[-1] if self.words else ""
 
 
+# A backslash before a newline joins the two lines, unless that backslash is
+# itself escaped (an even run of backslashes is literal).
+CONTINUATION = re.compile(r"(?<!\\)((?:\\\\)*)\\\n")
+
+
+def lines(text):
+    """The lines the shell reads one at a time: heredoc bodies dropped and
+    backslash continuations joined, so a command split over two lines is
+    read whole."""
+    return CONTINUATION.sub(r"\1", strip_heredoc_bodies(text)).split("\n")
+
+
 def strip_heredoc_bodies(text):
     """Keep the line that opens a heredoc, drop its body up to the terminator."""
     out, terminator = [], None
@@ -161,7 +173,7 @@ def _tokens(text):
     # file: rewrite them to `>`/`>>` so the target is checked as one.
     text = text.replace("&>>", ">>").replace("&>", ">")
     text = re.sub(r">&(?=\s*[^\s\d-])", ">", text)
-    text = text.replace("\n", " ; ")
+    text = CONTINUATION.sub(r"\1", text).replace("\n", " ; ")
     lexer = shlex.shlex(text, posix=True, punctuation_chars=";&|()<>")
     lexer.whitespace_split = True
     lexer.commenters = ""
@@ -256,9 +268,16 @@ def segments(command, cwd=None, _depth=0, _known=None, partial=False):
     try:
         tokens = _tokens(text)
     except ParseError:
-        if partial and _depth:
-            return
-        raise
+        if not (partial and _depth):
+            raise
+        # A nested script runs line by line too, so each line before the
+        # one that cannot be read is still read (one line alone: skipped).
+        # Its newlines reach it as ` ; ` (_tokens), so it splits on both.
+        parts = [part for line in lines(text) for part in line.split(" ; ")]
+        if len(parts) > 1:
+            for line in parts:
+                yield from segments(line, _depth=_depth, _known=_known, partial=True)
+        return
     raw, current = [], []
     for token in [*tokens, None]:
         if token is None or (token and set(token) <= OPERATOR_CHARS):
