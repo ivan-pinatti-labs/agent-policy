@@ -81,7 +81,10 @@ RESERVED_PREFIX = {
 RESERVED_HEADER = {"for", "select", "case"}
 SHELLS = {"bash", "sh", "zsh", "dash"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+# The delimiter must end the word, so `<<E"OF"` is not read as `<<E`.
+HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1(?![^\s;&|()<>])")
+# Characters after which a `#` starts a comment rather than sitting in a word.
+WORD_BREAK = frozenset(" \t;&|()<>")
 
 
 # How deep segments() reads substitutions, eval and `bash -c` inside each
@@ -127,11 +130,43 @@ def lines(text):
 CONTINUED = re.compile(r"(?<!\\)(?:\\\\)*\\$")
 
 
+def _heredoc_opener(line, quote):
+    """The delimiter of the first heredoc this line opens, and the quote still
+    open at its end (`'`, `"`, `$'` or None), given the quote open at its
+    start. Only a `<<` outside quotes and comments opens a heredoc, and a
+    here string (`<<<`) does not, so quoted text is never mistaken for one."""
+    opened, i = None, 0
+    while i < len(line):
+        char = line[i]
+        if quote == "'":
+            quote = None if char == "'" else quote
+        elif quote is not None:
+            if char == "\\":
+                i += 1
+            elif char == quote[-1]:
+                quote = None
+        elif char == "\\":
+            i += 1
+        elif line.startswith("$'", i):
+            quote, i = "$'", i + 1
+        elif char in "'\"":
+            quote = char
+        elif char == "#" and (i == 0 or line[i - 1] in WORD_BREAK):
+            break
+        elif line.startswith("<<<", i):
+            i += 2
+        elif match := HEREDOC.match(line, i):
+            opened = opened or match.group(2)
+            i = match.end() - 1
+        i += 1
+    return opened, quote
+
+
 def strip_heredoc_bodies(text, keep_terminator=False):
     r"""Keep the line that opens a heredoc, drop its body up to the terminator.
     Outside a body, a continued line is joined to the next first, so an
     opener split over two lines (`cat <<\` then `EOF`) is still an opener."""
-    out, terminator, pending = [], None, ""
+    out, terminator, pending, quote = [], None, "", None
     for line in text.split("\n"):
         if terminator is not None:
             if line.strip() == terminator:
@@ -140,14 +175,17 @@ def strip_heredoc_bodies(text, keep_terminator=False):
                     out.append(line)
             continue
         line = pending + line
-        if CONTINUED.search(line):
+        opened, end_quote = _heredoc_opener(line, quote)
+        if end_quote != "'" and CONTINUED.search(line):
             pending = line[:-1]
             continue
         pending = ""
         out.append(line)
-        match = HEREDOC.search(line)
-        if match:
-            terminator = match.group(2)
+        quote = end_quote
+        # A quote left open runs into the next line, so where a body would
+        # start is unclear: keep the following lines checked.
+        if quote is None:
+            terminator = opened
     if pending:
         out.append(pending)
     return "\n".join(out)

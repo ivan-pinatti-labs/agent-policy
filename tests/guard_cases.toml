@@ -2257,3 +2257,35 @@ expect = "ask"
 [[case]]
 command = "kubeseal --fetch-cert --recovery-{unseal,x}"
 expect = "ask"
+
+# A `<<` inside quotes, in a comment or in a here string opens no heredoc,
+# so the lines after it are still read.
+[[case]]
+command = "printf '<<EOF'\ngit push --force origin x\nEOF"
+expect = "deny"
+[[case]]
+command = "printf '<<EOF'\ngit push --force origin x\nEOF\necho 'unterminated"
+mode = "supervised"
+expect = "deny"
+[[case]]
+command = "printf \"a <<EOF\"\ngit push --force origin x\nEOF"
+expect = "deny"
+[[case]]
+command = "echo $'\\' <<EOF'\ngit push --force origin x\nEOF"
+mode = "supervised"
+expect = "deny"
+[[case]]
+command = "echo hi # <<EOF\ngit push --force origin x\nEOF"
+expect = "deny"
+[[case]]
+command = "cat <<<EOF\ngit push --force origin x\nEOF"
+expect = "deny"
+[[case]]
+command = "cat <<E\"OF\"\ngit push --force origin x\nEOF"
+expect = "deny"
+[[case]]
+command = "echo 'a\n<<EOF'\ngit push --force origin x\nEOF"
+expect = "deny"
+[[case]]
+command = "echo 'open\\\nrest' <<EOF\nbody\nEOF"
+expect = "none"
